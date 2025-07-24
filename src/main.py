@@ -3,8 +3,84 @@ from folium.plugins import HeatMap
 import webbrowser
 from enum import Enum
 import json
+import requests
+from abc import ABC, abstractmethod
+
+# --- Interfaces ---
+
+class RoutingClient(ABC):
+    @abstractmethod
+    def geocode(self, address):
+        pass
+
+    @abstractmethod
+    def get_route(self, origin, destination, costing="auto"):
+        pass
+
+# --- Valhalla Implementation ---
+
 from valhalla_client import ValhallaClient
 from nominatim_client import NominatimClient
+
+class ValhallaRoutingClient(RoutingClient):
+    def __init__(self, valhalla_url, nominatim_url):
+        self.valhalla = ValhallaClient(valhalla_url)
+        self.nominatim = NominatimClient(nominatim_url)
+
+    def geocode(self, address):
+        return self.nominatim.geocode(address)
+
+    def get_route(self, origin, destination, costing="auto"):
+        return self.valhalla.get_route(origin, destination, costing=costing)
+
+# --- Google Implementation ---
+
+class GoogleRoutingClient(RoutingClient):
+    def __init__(self, api_key):
+        self.api_key = api_key
+
+    def geocode(self, address):
+        url = "https://maps.googleapis.com/maps/api/geocode/json"
+        params = {"address": address, "key": self.api_key}
+        resp = requests.get(url, params=params)
+        resp.raise_for_status()
+        results = resp.json().get("results")
+        if not results:
+            raise Exception(f"Geocode failed for {address}")
+        loc = results[0]["geometry"]["location"]
+        return [loc["lat"], loc["lng"]]
+
+    def get_route(self, origin, destination, costing="auto"):
+        mode_map = {
+            "auto": "driving",
+            "bicycle": "bicycling",
+            "pedestrian": "walking",
+            "bus": "transit",
+            "motor_scooter": "driving",
+            "truck": "driving"
+        }
+        url = "https://maps.googleapis.com/maps/api/directions/json"
+        params = {
+            "origin": f"{origin[0]},{origin[1]}",
+            "destination": f"{destination[0]},{destination[1]}",
+            "mode": mode_map.get(costing, "driving"),
+            "key": self.api_key
+        }
+        resp = requests.get(url, params=params)
+        resp.raise_for_status()
+        data = resp.json()
+        if not data["routes"]:
+            return {}
+        summary = data["routes"][0]["legs"][0]
+        return {
+            "trip": {
+                "summary": {
+                    "length": summary["distance"]["value"] / 1000  # meters to km
+                }
+            }
+        }
+
+# --- Main logic ---
 
 class Costing(Enum):
     AUTO = "auto"
@@ -18,22 +94,19 @@ def load_json(filename):
     with open(filename, "r", encoding="utf-8") as f:
         return json.load(f)
 
-def main():
-    vallhala = ValhallaClient("http://[::1]:9000/valhalla")
-    nominatim = NominatimClient("http://[::1]:9000/nominatim")
-
+def main(routing_client):
     # Load destinations and origins from JSON files
     destinations = load_json("destinations.json")
     origins = load_json("home_options.json")
 
     destination_points = []
     for dest in destinations:
-        dest["coords"] = nominatim.geocode(dest["name"])
+        dest["coords"] = routing_client.geocode(dest["name"])
         destination_points.append(dest["coords"])
 
     origins_points = []
     for origin in origins:
-        origin["coords"] = nominatim.geocode(origin["name"])
+        origin["coords"] = routing_client.geocode(origin["name"])
         origins_points.append(origin["coords"])
 
     costing = Costing.AUTO.value
@@ -44,7 +117,7 @@ def main():
         valid_count = 0
         for dest in destinations:
             try:
-                response = vallhala.get_route(origin["coords"], dest["coords"], costing=costing)
+                response = routing_client.get_route(origin["coords"], dest["coords"], costing=costing)
                 if "trip" in response and "summary" in response["trip"]:
                     distance = response["trip"]["summary"]["length"]  # in km
                     weighted = distance * dest.get("weight", 1.0)
@@ -79,5 +152,14 @@ def main():
     webbrowser.open(map_file)
 
 if __name__ == "__main__":
-    main()
+    # Choose the provider here:
+    USE_GOOGLE = False  # Set to True to use Google, False for Valhalla
+
+    if USE_GOOGLE:
+        GOOGLE_API_KEY = "YOUR_GOOGLE_API_KEY"  # <-- Replace with your actual API key
+        routing_client = GoogleRoutingClient(GOOGLE_API_KEY)
+    else:
+        routing_client = ValhallaRoutingClient("http://[::1]:9000/valhalla", "http://[::1]:9000/nominatim")
+
+    main(routing_client)
     print("END")
