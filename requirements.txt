@@ -1,3 +1,7 @@
 polyline
 folium
 python-dotenv
+requests
+dash
+plotly
+pandas
