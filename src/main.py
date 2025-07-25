@@ -5,6 +5,12 @@ from enum import Enum
 import json
 import requests
 from abc import ABC, abstractmethod
+import os
+from dotenv import load_dotenv
+
+# Load environment variables
+load_dotenv()
+load_dotenv('.env.local', override=True)  # loads .env.local and overrides .env values
 
 # --- Interfaces ---
 
@@ -75,7 +81,7 @@ class GoogleRoutingClient(RoutingClient):
         return {
             "trip": {
                 "summary": {
-                    "length": summary["distance"]["value"] / 1000  # meters to km
+                    "time": summary["duration"]["value"] / 60  # seconds to minutes
                 }
             }
         }
@@ -119,11 +125,14 @@ def main(routing_client):
             try:
                 response = routing_client.get_route(origin["coords"], dest["coords"], costing=costing)
                 if "trip" in response and "summary" in response["trip"]:
-                    distance = response["trip"]["summary"]["length"]  # in km
-                    weighted = distance * dest.get("weight", 1.0)
+                    time_min = response["trip"]["summary"].get("time")
+                    if time_min is None:
+                        print(f"No time for route from {origin['name']} to {dest['name']}")
+                        continue
+                    weighted = time_min * dest.get("weight", 1.0)
                     score += weighted
                     valid_count += 1
-                    print(f"Route from {origin['name']} to {dest['name']}: {distance} km (weight {dest.get('weight', 1.0)})")
+                    print(f"Route from {origin['name']} to {dest['name']}: {time_min:.2f} min (weight {dest.get('weight', 1.0)})")
                 else:
                     print(f"No summary for route from {origin['name']} to {dest['name']}")
             except Exception as e:
@@ -153,13 +162,17 @@ def main(routing_client):
 
 if __name__ == "__main__":
     # Choose the provider here:
-    USE_GOOGLE = False  # Set to True to use Google, False for Valhalla
+    USE_GOOGLE = os.getenv("USE_GOOGLE", "false").lower() == "true"
 
     if USE_GOOGLE:
-        GOOGLE_API_KEY = "YOUR_GOOGLE_API_KEY"  # <-- Replace with your actual API key
+        GOOGLE_API_KEY = os.getenv("GOOGLE_API_KEY")
+        if not GOOGLE_API_KEY:
+            raise ValueError("GOOGLE_API_KEY not found in environment variables")
         routing_client = GoogleRoutingClient(GOOGLE_API_KEY)
     else:
-        routing_client = ValhallaRoutingClient("http://[::1]:9000/valhalla", "http://[::1]:9000/nominatim")
+        VALHALLA_URL = os.getenv("VALHALLA_URL", "http://[::1]:9000/valhalla")
+        NOMINATIM_URL = os.getenv("NOMINATIM_URL", "http://[::1]:9000/nominatim")
+        routing_client = ValhallaRoutingClient(VALHALLA_URL, NOMINATIM_URL)
 
     main(routing_client)
     print("END")

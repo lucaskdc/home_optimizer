@@ -71,5 +71,6 @@ dmypy.json
 
 # Local config
 *.env
+*.env.local
 
 # OS files
