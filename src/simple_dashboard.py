@@ -2,7 +2,7 @@ import json
 import webbrowser
 import os
 from datetime import datetime
-from main import GoogleRoutingClient, ValhallaRoutingClient, load_json
+from main import setup_routing_client, load_json
 from dotenv import load_dotenv
 
 # Load environment variables
@@ -11,22 +11,8 @@ load_dotenv('.env.local', override=True)
 
 class SimpleHTMLDashboard:
     def __init__(self):
-        self.routing_client = self._setup_routing_client()
+        self.routing_client = setup_routing_client()
         
-    def _setup_routing_client(self):
-        """Setup the routing client based on environment variables"""
-        USE_GOOGLE = os.getenv("USE_GOOGLE", "false").lower() == "true"
-        
-        if USE_GOOGLE:
-            GOOGLE_API_KEY = os.getenv("GOOGLE_API_KEY")
-            if not GOOGLE_API_KEY:
-                raise ValueError("GOOGLE_API_KEY not found in environment variables")
-            return GoogleRoutingClient(GOOGLE_API_KEY)
-        else:
-            VALHALLA_URL = os.getenv("VALHALLA_URL", "http://[::1]:9000/valhalla")
-            NOMINATIM_URL = os.getenv("NOMINATIM_URL", "http://[::1]:9000/nominatim")
-            return ValhallaRoutingClient(VALHALLA_URL, NOMINATIM_URL)
-    
     def load_and_process_data(self, costing="auto"):
         """Load destinations and origins, calculate routes"""
         try:

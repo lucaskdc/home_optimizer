@@ -5,7 +5,7 @@ import plotly.graph_objects as go
 import pandas as pd
 import json
 import os
-from main import GoogleRoutingClient, ValhallaRoutingClient, Costing, load_json
+from main import setup_routing_client, load_json, GoogleRoutingClient
 from dotenv import load_dotenv
 import logging
 
@@ -20,27 +20,11 @@ logger = logging.getLogger(__name__)
 class RoutingDashboard:
     def __init__(self):
         self.app = dash.Dash(__name__)
-        self.routing_client = self._setup_routing_client()
+        self.routing_client = setup_routing_client()
         self.google_request_count = 0  # Track Google API requests
         self.setup_layout()
         self.setup_callbacks()
         
-    def _setup_routing_client(self):
-        """Setup the routing client based on environment variables"""
-        USE_GOOGLE = os.getenv("USE_GOOGLE", "false").lower() == "true"
-        
-        if USE_GOOGLE:
-            GOOGLE_API_KEY = os.getenv("GOOGLE_API_KEY")
-            if not GOOGLE_API_KEY:
-                raise ValueError("GOOGLE_API_KEY not found in environment variables")
-            logger.info("Using Google Routing Client")
-            return GoogleRoutingClient(GOOGLE_API_KEY)
-        else:
-            VALHALLA_URL = os.getenv("VALHALLA_URL", "http://[::1]:9000/valhalla")
-            NOMINATIM_URL = os.getenv("NOMINATIM_URL", "http://[::1]:9000/nominatim")
-            logger.info("Using Valhalla Routing Client")
-            return ValhallaRoutingClient(VALHALLA_URL, NOMINATIM_URL)
-    
     def load_and_process_data(self, costing="auto"):
         """Load destinations and origins, calculate routes"""
         try:

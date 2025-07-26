@@ -275,8 +275,8 @@ def main(routing_client: RoutingClient):
     webbrowser.open(map_file)
     logger.info("Heatmap saved and opened in browser")
 
-if __name__ == "__main__":
-    # Choose the provider here:
+def setup_routing_client() -> CachedRoutingClient:
+    """Setup the routing client and cache."""
     USE_GOOGLE = os.getenv("USE_GOOGLE", "false").lower() == "true"
 
     if USE_GOOGLE:
@@ -292,7 +292,9 @@ if __name__ == "__main__":
     # Add caching
     mongo_url = os.getenv("MONGO_URL", "mongodb://localhost:27017")
     cache = MongoCache(mongo_url)
-    cached_routing_client = CachedRoutingClient(routing_client, cache)
+    return CachedRoutingClient(routing_client, cache)
 
+if __name__ == "__main__":
+    cached_routing_client = setup_routing_client()
     main(cached_routing_client)
     print("END")
