@@ -145,12 +145,16 @@ class CachedRoutingClient(RoutingClient):
 
     def _generate_key(self, method: str, *args: Tuple, **kwargs: Dict) -> str:
         key_data = json.dumps({
-            "client_name": self.routing_client.get_name(),
+            "client_name": self.routing_client.name,
             "method": method,
             "args": args,
             "kwargs": kwargs
         }, sort_keys=True)
         return hashlib.sha256(key_data.encode()).hexdigest()
+    
+    @property
+    def name(self) -> str:
+        return "Cached " + self.routing_client.name
 
     def get_route(self, origin: List[float], destination: List[float], costing: str = "auto", departure_time: Optional[str] = None, day_of_week: Optional[str] = None) -> Dict:
         key = self._generate_key("get_route", origin, destination, costing=costing, departure_time=departure_time, day_of_week=day_of_week)
@@ -168,10 +172,28 @@ class CachedRoutingClient(RoutingClient):
             "costing": costing,
             "departure_time": departure_time,
             "day_of_week": day_of_week,
-            "client_name": self.routing_client.get_name()
+            "client_name": self.routing_client.name
         }
         self.cache.set(key, result, metadata)
         logger.info(f"Route calculated and cached: {origin} -> {destination}")
+        return result
+
+    def geocode(self, address: str) -> List[float]:
+        key = self._generate_key("geocode", address=address)
+        cached_result = self.cache.get(key)
+        if cached_result is not None:
+            logger.info(f"Cache hit for geocode: {address}")
+            return cached_result
+
+        logger.info(f"Cache miss for geocode: {address}")
+        result = self.routing_client.geocode(address)
+        metadata = {
+            "method": "geocode",
+            "address": address,
+            "client_name": self.routing_client.name
+        }
+        self.cache.set(key, result, metadata)
+        logger.info(f"Geocode result cached for: {address}")
         return result
 
 # --- Main logic ---
