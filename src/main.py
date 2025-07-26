@@ -10,6 +10,7 @@ from dotenv import load_dotenv
 from pymongo import MongoClient
 import hashlib
 from datetime import datetime
+from typing import List, Dict, Tuple, Union, Optional
 
 # Load environment variables
 load_dotenv()
@@ -19,16 +20,16 @@ load_dotenv('.env.local', override=True)  # loads .env.local and overrides .env 
 
 class RoutingClient(ABC):
     @abstractmethod
-    def geocode(self, address):
+    def geocode(self, address: str) -> List[float]:
         pass
 
     @abstractmethod
-    def get_route(self, origin, destination, costing="auto"):
+    def get_route(self, origin: List[float], destination: List[float], costing: str = "auto") -> Dict:
         pass
 
     @property
     @abstractmethod
-    def name(self):
+    def name(self) -> str:
         pass
 
 # --- Valhalla Implementation ---
@@ -37,27 +38,27 @@ from valhalla_client import ValhallaClient
 from nominatim_client import NominatimClient
 
 class ValhallaRoutingClient(RoutingClient):
-    def __init__(self, valhalla_url, nominatim_url):
+    def __init__(self, valhalla_url: str, nominatim_url: str):
         self.valhalla = ValhallaClient(valhalla_url)
         self.nominatim = NominatimClient(nominatim_url)
 
-    def geocode(self, address):
+    def geocode(self, address: str) -> List[float]:
         return self.nominatim.geocode(address)
 
-    def get_route(self, origin, destination, costing="auto"):
+    def get_route(self, origin: List[float], destination: List[float], costing: str = "auto") -> Dict:
         return self.valhalla.get_route(origin, destination, costing=costing)
 
     @property
-    def name(self):
+    def name(self) -> str:
         return "Valhalla"
 
 # --- Google Implementation ---
 
 class GoogleRoutingClient(RoutingClient):
-    def __init__(self, api_key):
+    def __init__(self, api_key: str):
         self.api_key = api_key
 
-    def geocode(self, address):
+    def geocode(self, address: str) -> List[float]:
         url = "https://maps.googleapis.com/maps/api/geocode/json"
         params = {"address": address, "key": self.api_key}
         resp = requests.get(url, params=params)
@@ -68,7 +69,7 @@ class GoogleRoutingClient(RoutingClient):
         loc = results[0]["geometry"]["location"]
         return [loc["lat"], loc["lng"]]
 
-    def get_route(self, origin, destination, costing="auto"):
+    def get_route(self, origin: List[float], destination: List[float], costing: str = "auto") -> Dict:
         mode_map = {
             "auto": "driving",
             "bicycle": "bicycling",
@@ -99,25 +100,25 @@ class GoogleRoutingClient(RoutingClient):
         }
 
     @property
-    def name(self):
+    def name(self) -> str:
         return "Google"
 
 # --- MongoDB Cache ---
 
 class MongoCache:
-    def __init__(self, mongo_url="mongodb://localhost:27017", db_name="routing_cache", collection_name="cache"):
+    def __init__(self, mongo_url: str = "mongodb://localhost:27017", db_name: str = "routing_cache", collection_name: str = "cache"):
         self.client = MongoClient(mongo_url)
         self.db = self.client[db_name]
         self.collection = self.db[collection_name]
         self.collection.create_index("key", unique=True)
 
-    def get(self, key):
+    def get(self, key: str) -> Optional[Dict]:
         result = self.collection.find_one({"key": key})
         if result:
             return json.loads(result["value"])
         return None
 
-    def set(self, key, value, metadata=None):
+    def set(self, key: str, value: Dict, metadata: Optional[Dict] = None):
         if metadata is None:
             metadata = {}
         self.collection.update_one(
@@ -133,11 +134,11 @@ class MongoCache:
 # --- Cached Routing Client ---
 
 class CachedRoutingClient(RoutingClient):
-    def __init__(self, routing_client, cache):
+    def __init__(self, routing_client: RoutingClient, cache: MongoCache):
         self.routing_client = routing_client
         self.cache = cache
 
-    def _generate_key(self, method, *args, **kwargs):
+    def _generate_key(self, method: str, *args: Tuple, **kwargs: Dict) -> str:
         key_data = json.dumps({
             "client_name": self.routing_client.get_name(),
             "method": method,
@@ -146,7 +147,7 @@ class CachedRoutingClient(RoutingClient):
         }, sort_keys=True)
         return hashlib.sha256(key_data.encode()).hexdigest()
 
-    def geocode(self, address):
+    def geocode(self, address: str) -> List[float]:
         key = self._generate_key("geocode", address)
         cached_result = self.cache.get(key)
         if cached_result is not None:
@@ -157,7 +158,7 @@ class CachedRoutingClient(RoutingClient):
         self.cache.set(key, result, metadata)
         return result
 
-    def get_route(self, origin, destination, costing="auto"):
+    def get_route(self, origin: List[float], destination: List[float], costing: str = "auto") -> Dict:
         key = self._generate_key("get_route", origin, destination, costing=costing)
         cached_result = self.cache.get(key)
         if cached_result is not None:
@@ -184,11 +185,11 @@ class Costing(Enum):
     MOTOR_SCOOTER = "motor_scooter"
     TRUCK = "truck"
 
-def load_json(filename):
+def load_json(filename: str) -> Union[List, Dict]:
     with open(filename, "r", encoding="utf-8") as f:
         return json.load(f)
 
-def calculate_score(origin, destinations, routing_client, costing):
+def calculate_score(origin: Dict, destinations: List[Dict], routing_client: RoutingClient, costing: str) -> Tuple[float, int]:
     score = 0
     valid_count = 0
     for dest in destinations:
@@ -209,7 +210,7 @@ def calculate_score(origin, destinations, routing_client, costing):
             print(f"Error for origin {origin['name']} to {dest['name']}: {e}")
     return score, valid_count
 
-def main(routing_client):
+def main(routing_client: RoutingClient):
     # Load destinations and origins from JSON files
     destinations = load_json("destinations.json")
     origins = load_json("home_options.json")
