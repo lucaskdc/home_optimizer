@@ -1,5 +1,23 @@
 [
-    {"name": "Campus Vale - UFRGS, Porto Alegre, Brazil", "weight": 5.0},
-    {"name": "Mercado Público, Porto Alegre, Brazil", "weight": 1.0},
-    {"name": "Estádio Beira-Rio, Porto Alegre, Brazil", "weight": 1.5}
+    {
+        "name": "Campus Vale - UFRGS, Porto Alegre, Brazil",
+        "weight": 5.0,
+        "departure_time_to": "08:00",
+        "departure_time_from": "12:00",
+        "day_of_week": "Monday"
+    },
+    {
+        "name": "Mercado Público, Porto Alegre, Brazil",
+        "weight": 1.0,
+        "departure_time_to": "12:00",
+        "departure_time_from": "15:00",
+        "day_of_week": "Wednesday"
+    },
+    {
+        "name": "Estádio Beira-Rio, Porto Alegre, Brazil",
+        "weight": 1.5,
+        "departure_time_to": "18:00",
+        "departure_time_from": "22:00",
+        "day_of_week": "Friday"
+    }
 ]

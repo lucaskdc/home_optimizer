@@ -9,7 +9,7 @@ import os
 from dotenv import load_dotenv
 from pymongo import MongoClient
 import hashlib
-from datetime import datetime
+from datetime import datetime, timedelta
 from typing import List, Dict, Tuple, Union, Optional
 
 # Load environment variables
@@ -147,19 +147,8 @@ class CachedRoutingClient(RoutingClient):
         }, sort_keys=True)
         return hashlib.sha256(key_data.encode()).hexdigest()
 
-    def geocode(self, address: str) -> List[float]:
-        key = self._generate_key("geocode", address)
-        cached_result = self.cache.get(key)
-        if cached_result is not None:
-            return cached_result
-
-        result = self.routing_client.geocode(address)
-        metadata = {"method": "geocode", "address": address, "client_name": self.routing_client.get_name()}
-        self.cache.set(key, result, metadata)
-        return result
-
-    def get_route(self, origin: List[float], destination: List[float], costing: str = "auto") -> Dict:
-        key = self._generate_key("get_route", origin, destination, costing=costing)
+    def get_route(self, origin: List[float], destination: List[float], costing: str = "auto", departure_time: Optional[str] = None, day_of_week: Optional[str] = None) -> Dict:
+        key = self._generate_key("get_route", origin, destination, costing=costing, departure_time=departure_time, day_of_week=day_of_week)
         cached_result = self.cache.get(key)
         if cached_result is not None:
             return cached_result
@@ -170,6 +159,8 @@ class CachedRoutingClient(RoutingClient):
             "origin": origin,
             "destination": destination,
             "costing": costing,
+            "departure_time": departure_time,
+            "day_of_week": day_of_week,
             "client_name": self.routing_client.get_name()
         }
         self.cache.set(key, result, metadata)
@@ -194,24 +185,45 @@ def calculate_score(origin: Dict, destinations: List[Dict], routing_client: Rout
     valid_count = 0
     for dest in destinations:
         try:
-            response = routing_client.get_route(origin["coords"], dest["coords"], costing=costing)
-            if "trip" in response and "summary" in response["trip"]:
-                time_min = response["trip"]["summary"].get("time")
-                if time_min is None:
-                    print(f"No time for route from {origin['name']} to {dest['name']}")
+            departure_time_to = dest.get("departure_time_to")
+            departure_time_from = dest.get("departure_time_from")
+            day_of_week = dest.get("day_of_week")
+
+            # Calculate route to the destination
+            response_to = routing_client.get_route(
+                origin["coords"], dest["coords"], costing=costing, 
+                departure_time=departure_time_to, day_of_week=day_of_week
+            )
+
+            # Calculate route from the destination
+            response_from = routing_client.get_route(
+                dest["coords"], origin["coords"], costing=costing, 
+                departure_time=departure_time_from, day_of_week=day_of_week
+            )
+
+            if "trip" in response_to and "summary" in response_to["trip"] and \
+               "trip" in response_from and "summary" in response_from["trip"]:
+
+                time_to = response_to["trip"]["summary"].get("time")
+                time_from = response_from["trip"]["summary"].get("time")
+
+                if time_to is None or time_from is None:
+                    print(f"No time for route from {origin['name']} to {dest['name']} or back")
                     continue
-                weighted = time_min * dest.get("weight", 1.0)
+
+                total_time = time_to + time_from
+                weighted = total_time * dest.get("weight", 1.0)
                 score += weighted
                 valid_count += 1
-                print(f"Route from {origin['name']} to {dest['name']}: {time_min:.2f} min (weight {dest.get('weight', 1.0)})")
+
+                print(f"Roundtrip from {origin['name']} to {dest['name']}: {total_time:.2f} min (weight {dest.get('weight', 1.0)})")
             else:
-                print(f"No summary for route from {origin['name']} to {dest['name']}")
+                print(f"No summary for roundtrip from {origin['name']} to {dest['name']}")
         except Exception as e:
-            print(f"Error for origin {origin['name']} to {dest['name']}: {e}")
+            print(f"Error for roundtrip from {origin['name']} to {dest['name']}: {e}")
     return score, valid_count
 
 def main(routing_client: RoutingClient):
-    # Load destinations and origins from JSON files
     destinations = load_json("destinations.json")
     origins = load_json("home_options.json")
 
