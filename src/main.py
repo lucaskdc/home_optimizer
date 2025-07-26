@@ -29,7 +29,8 @@ class RoutingClient(ABC):
         pass
 
     @abstractmethod
-    def get_route(self, origin: List[float], destination: List[float], costing: str = "auto") -> Dict:
+    def get_route(self, origin: List[float], destination: List[float], costing: str = "auto", 
+                  departure_time: Optional[str] = None, day_of_week: Optional[str] = None) -> Dict:
         pass
 
     @property
@@ -50,7 +51,10 @@ class ValhallaRoutingClient(RoutingClient):
     def geocode(self, address: str) -> List[float]:
         return self.nominatim.geocode(address)
 
-    def get_route(self, origin: List[float], destination: List[float], costing: str = "auto") -> Dict:
+    def get_route(self, origin: List[float], destination: List[float], costing: str = "auto", 
+                  departure_time: Optional[str] = None, day_of_week: Optional[str] = None) -> Dict:
+        # Note: Valhalla client doesn't currently support departure time/day parameters
+        # This could be extended in the future to pass timing information to Valhalla
         return self.valhalla.get_route(origin, destination, costing=costing)
 
     @property
@@ -74,7 +78,8 @@ class GoogleRoutingClient(RoutingClient):
         loc = results[0]["geometry"]["location"]
         return [loc["lat"], loc["lng"]]
 
-    def get_route(self, origin: List[float], destination: List[float], costing: str = "auto") -> Dict:
+    def get_route(self, origin: List[float], destination: List[float], costing: str = "auto", 
+                  departure_time: Optional[str] = None, day_of_week: Optional[str] = None) -> Dict:
         mode_map = {
             "auto": "driving",
             "bicycle": "bicycling",
@@ -83,26 +88,132 @@ class GoogleRoutingClient(RoutingClient):
             "motor_scooter": "driving",
             "truck": "driving"
         }
+        
         url = "https://maps.googleapis.com/maps/api/directions/json"
         params = {
             "origin": f"{origin[0]},{origin[1]}",
             "destination": f"{destination[0]},{destination[1]}",
             "mode": mode_map.get(costing, "driving"),
-            "key": self.api_key
+            "key": self.api_key,
+            "units": "metric"
         }
+        
+        # Add departure time if provided
+        if departure_time and day_of_week:
+            departure_timestamp = self._convert_to_timestamp(departure_time, day_of_week)
+            if departure_timestamp:
+                # Google API supports departure_time for driving and transit modes
+                if params["mode"] in ["driving", "transit"]:
+                    params["departure_time"] = str(departure_timestamp)
+                    # Enable traffic-aware routing for driving mode
+                    if params["mode"] == "driving":
+                        params["traffic_model"] = "best_guess"  # Enable traffic modeling
+                    logger.info(f"Using departure time: {departure_time} on {day_of_week} (timestamp: {departure_timestamp})")
+                else:
+                    logger.info(f"Departure time not supported for mode: {params['mode']}")
+        
         resp = requests.get(url, params=params)
         resp.raise_for_status()
         data = resp.json()
+        
         if not data["routes"]:
+            logger.warning(f"No routes found from {origin} to {destination}")
             return {}
+            
         summary = data["routes"][0]["legs"][0]
-        return {
+        
+        # Extract basic timing information
+        result = {
             "trip": {
                 "summary": {
-                    "time": summary["duration"]["value"] / 60  # seconds to minutes
+                    "time": summary["duration"]["value"] / 60,  # seconds to minutes
+                    "distance": summary["distance"]["value"] / 1000  # meters to km
                 }
             }
         }
+        
+        # Add traffic-aware duration if available (for driving mode with departure time)
+        if "duration_in_traffic" in summary:
+            traffic_time = summary["duration_in_traffic"]["value"] / 60
+            result["trip"]["summary"]["traffic_time"] = traffic_time
+            
+            # Calculate traffic impact
+            normal_time = result["trip"]["summary"]["time"]
+            traffic_impact = ((traffic_time - normal_time) / normal_time) * 100
+            result["trip"]["summary"]["traffic_impact_percent"] = round(traffic_impact, 1)
+            
+            logger.info(f"Traffic-aware duration: {traffic_time:.2f} min vs normal: {normal_time:.2f} min (impact: {traffic_impact:+.1f}%)")
+        
+        # Add additional route information if available
+        if "overview_polyline" in data["routes"][0]:
+            result["trip"]["geometry"] = data["routes"][0]["overview_polyline"]["points"]
+        
+        # Log detailed route information
+        logger.info(f"Route {origin} -> {destination}: {result['trip']['summary']['time']:.2f} min, {result['trip']['summary']['distance']:.2f} km")
+        
+        return result
+    
+    def _convert_to_timestamp(self, departure_time: str, day_of_week: str) -> Optional[int]:
+        """Convert departure time and day of week to Unix timestamp.
+        
+        Args:
+            departure_time: Time in HH:MM format (e.g., "08:30")
+            day_of_week: Day name (e.g., "Monday")
+            
+        Returns:
+            Unix timestamp for the next occurrence of that day/time, or None if invalid
+        """
+        try:
+            from datetime import datetime, timedelta
+            import calendar
+            
+            # Parse the time
+            time_parts = departure_time.split(":")
+            if len(time_parts) != 2:
+                logger.warning(f"Invalid time format: {departure_time}")
+                return None
+                
+            hour = int(time_parts[0])
+            minute = int(time_parts[1])
+            
+            # Map day names to weekday numbers (Monday=0, Sunday=6)
+            day_map = {
+                "monday": 0, "tuesday": 1, "wednesday": 2, "thursday": 3,
+                "friday": 4, "saturday": 5, "sunday": 6
+            }
+            
+            target_weekday = day_map.get(day_of_week.lower())
+            if target_weekday is None:
+                logger.warning(f"Invalid day of week: {day_of_week}")
+                return None
+            
+            # Get current time
+            now = datetime.now()
+            current_weekday = now.weekday()
+            
+            # Calculate days until target day
+            days_ahead = target_weekday - current_weekday
+            if days_ahead < 0:  # Target day already happened this week
+                days_ahead += 7
+            elif days_ahead == 0:  # Same day
+                # Check if the time has already passed today
+                target_time = now.replace(hour=hour, minute=minute, second=0, microsecond=0)
+                if target_time <= now:
+                    days_ahead = 7  # Use next week
+            
+            # Create target datetime
+            target_date = now + timedelta(days=days_ahead)
+            target_datetime = target_date.replace(hour=hour, minute=minute, second=0, microsecond=0)
+            
+            # Convert to Unix timestamp
+            timestamp = int(target_datetime.timestamp())
+            
+            logger.info(f"Converted {departure_time} on {day_of_week} to timestamp {timestamp} ({target_datetime})")
+            return timestamp
+            
+        except Exception as e:
+            logger.error(f"Error converting time to timestamp: {e}")
+            return None
 
     @property
     def name(self) -> str:
@@ -164,7 +275,8 @@ class CachedRoutingClient(RoutingClient):
             return cached_result
 
         logger.info(f"Cache miss for route: {origin} -> {destination}")
-        result = self.routing_client.get_route(origin, destination, costing=costing)
+        result = self.routing_client.get_route(origin, destination, costing=costing, 
+                                             departure_time=departure_time, day_of_week=day_of_week)
         metadata = {
             "method": "get_route",
             "origin": origin,
@@ -265,6 +377,13 @@ def calculate_routes_and_scores(routing_client: RoutingClient, origins: List[Dic
                 
                 if "trip" in response and "summary" in response["trip"]:
                     time_min = response["trip"]["summary"].get("time")
+                    
+                    # Use traffic-aware time if available (more accurate for driving)
+                    if "traffic_time" in response["trip"]["summary"]:
+                        traffic_time = response["trip"]["summary"]["traffic_time"]
+                        logger.info(f"Using traffic-aware time: {traffic_time:.2f} min (normal: {time_min:.2f} min)")
+                        time_min = traffic_time
+                    
                     if time_min is not None:
                         weighted_time = time_min * dest.get("weight", 1.0)
                         total_score += weighted_time
@@ -282,6 +401,12 @@ def calculate_routes_and_scores(routing_client: RoutingClient, origins: List[Dic
                             "origin_coords": origin["coords"],
                             "dest_coords": dest["coords"]
                         }
+                        
+                        # Add traffic information if available
+                        if "traffic_time" in response["trip"]["summary"]:
+                            route_info["traffic_time"] = round(response["trip"]["summary"]["traffic_time"], 2)
+                            route_info["normal_time"] = round(response["trip"]["summary"]["time"], 2)
+                            route_info["traffic_impact_percent"] = response["trip"]["summary"].get("traffic_impact_percent", 0)
                         
                         origin_routes.append(route_info)
                         route_data.append(route_info)
@@ -327,49 +452,6 @@ def load_and_process_routing_data(routing_client: RoutingClient, costing: str = 
     route_data, origin_scores = calculate_routes_and_scores(routing_client, origins, destinations, costing)
     
     return route_data, origin_scores, destinations
-
-def calculate_score(origin: Dict, destinations: List[Dict], routing_client: RoutingClient, costing: str) -> Tuple[float, int]:
-    score = 0
-    valid_count = 0
-    for dest in destinations:
-        try:
-            departure_time_to = dest.get("departure_time_to")
-            departure_time_from = dest.get("departure_time_from")
-            day_of_week = dest.get("day_of_week")
-
-            logger.info(f"Calculating route to destination: {dest['name']}")
-            response_to = routing_client.get_route(
-                origin["coords"], dest["coords"], costing=costing, 
-                departure_time=departure_time_to, day_of_week=day_of_week
-            )
-
-            logger.info(f"Calculating route from destination: {dest['name']}")
-            response_from = routing_client.get_route(
-                dest["coords"], origin["coords"], costing=costing, 
-                departure_time=departure_time_from, day_of_week=day_of_week
-            )
-
-            if "trip" in response_to and "summary" in response_to["trip"] and \
-               "trip" in response_from and "summary" in response_from["trip"]:
-
-                time_to = response_to["trip"]["summary"].get("time")
-                time_from = response_from["trip"]["summary"].get("time")
-
-                if time_to is None or time_from is None:
-                    logger.warning(f"No time for route from {origin['name']} to {dest['name']} or back")
-                    continue
-
-                total_time = time_to + time_from
-                weighted = total_time * dest.get("weight", 1.0)
-                score += weighted
-                valid_count += 1
-
-                logger.info(f"Roundtrip from {origin['name']} to {dest['name']}: {total_time:.2f} min (weight {dest.get('weight', 1.0)})")
-            else:
-                logger.warning(f"No summary for roundtrip from {origin['name']} to {dest['name']}")
-        except Exception as e:
-            logger.error(f"Error for roundtrip from {origin['name']} to {dest['name']}: {e}")
-    return score, valid_count
 
 def main(routing_client: RoutingClient):
     logger.info("Starting main function")

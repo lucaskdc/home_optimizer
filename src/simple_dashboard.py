@@ -175,14 +175,14 @@ class SimpleHTMLDashboard:
             overflow-x: auto;
             display: block;
             white-space: nowrap;
+            font-size: 0.85em;
         }}
         
         th, td {{
-            padding: 8px;
+            padding: 6px;
             text-align: left;
             border-bottom: 1px solid #ddd;
-            font-size: 0.9em;
-            min-width: 80px;
+            min-width: 70px;
         }}
         
         th {{
@@ -327,6 +327,9 @@ class SimpleHTMLDashboard:
                         <th>Origin</th>
                         <th>Destination</th>
                         <th>Travel Time (min)</th>
+                        <th>Traffic Time (min)</th>
+                        <th>Normal Time (min)</th>
+                        <th>Traffic Impact (%)</th>
                         <th>Weight</th>
                         <th>Weighted Time</th>
                         <th>Departure To</th>
@@ -339,11 +342,18 @@ class SimpleHTMLDashboard:
         
         # Add route data table
         for route in route_data:
+            traffic_time = route.get('traffic_time', route['travel_time'])
+            normal_time = route.get('normal_time', route['travel_time'])
+            traffic_impact = route.get('traffic_impact_percent', 0)
+            
             html_content += f"""
                     <tr>
                         <td>{route['origin']}</td>
                         <td>{route['destination']}</td>
                         <td>{route['travel_time']}</td>
+                        <td>{traffic_time}</td>
+                        <td>{normal_time}</td>
+                        <td>{traffic_impact:+.1f}%</td>
                         <td>{route['weight']}</td>
                         <td>{route['weighted_time']}</td>
                         <td>{route.get('departure_time_to', 'N/A')}</td>

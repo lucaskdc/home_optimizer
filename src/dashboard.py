@@ -43,7 +43,10 @@ class RoutingDashboard:
                 "origin_lat": route["origin_coords"][0],
                 "origin_lng": route["origin_coords"][1],
                 "dest_lat": route["dest_coords"][0],
-                "dest_lng": route["dest_coords"][1]
+                "dest_lng": route["dest_coords"][1],
+                "traffic_time": route.get("traffic_time", route["travel_time"]),
+                "normal_time": route.get("normal_time", route["travel_time"]),
+                "traffic_impact_percent": route.get("traffic_impact_percent", 0)
             } for route in route_data])
             origins_df = pd.DataFrame([{
                 "origin": score["name"],
@@ -225,7 +228,8 @@ class RoutingDashboard:
         ], style={'marginBottom': 30, 'padding': '20px', 'backgroundColor': '#f8f9fa', 'borderRadius': '10px'})
         
         # Data table
-        table_data = routes_df[['origin', 'destination', 'travel_time', 'weight', 'weighted_time', 
+        table_data = routes_df[['origin', 'destination', 'travel_time', 'traffic_time', 'normal_time', 
+                               'traffic_impact_percent', 'weight', 'weighted_time', 
                                'departure_time_to', 'departure_time_from', 'day_of_week']].round(2)
         
         return html.Div([
@@ -256,6 +260,9 @@ class RoutingDashboard:
                         {'name': 'Origin', 'id': 'origin'},
                         {'name': 'Destination', 'id': 'destination'},
                         {'name': 'Travel Time (min)', 'id': 'travel_time', 'type': 'numeric', 'format': {'specifier': '.1f'}},
+                        {'name': 'Traffic Time (min)', 'id': 'traffic_time', 'type': 'numeric', 'format': {'specifier': '.1f'}},
+                        {'name': 'Normal Time (min)', 'id': 'normal_time', 'type': 'numeric', 'format': {'specifier': '.1f'}},
+                        {'name': 'Traffic Impact (%)', 'id': 'traffic_impact_percent', 'type': 'numeric', 'format': {'specifier': '.1f'}},
                         {'name': 'Weight', 'id': 'weight', 'type': 'numeric', 'format': {'specifier': '.1f'}},
                         {'name': 'Weighted Time', 'id': 'weighted_time', 'type': 'numeric', 'format': {'specifier': '.1f'}},
                         {'name': 'Departure To', 'id': 'departure_time_to'},
