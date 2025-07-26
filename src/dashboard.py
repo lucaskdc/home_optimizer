@@ -5,7 +5,7 @@ import plotly.graph_objects as go
 import pandas as pd
 import json
 import os
-from main import setup_routing_client, load_json, GoogleRoutingClient
+from main import setup_routing_client, load_and_process_routing_data, GoogleRoutingClient
 from dotenv import load_dotenv
 import logging
 
@@ -21,113 +21,62 @@ class RoutingDashboard:
     def __init__(self):
         self.app = dash.Dash(__name__)
         self.routing_client = setup_routing_client()
-        self.google_request_count = 0  # Track Google API requests
         self.setup_layout()
         self.setup_callbacks()
         
     def load_and_process_data(self, costing="auto"):
         """Load destinations and origins, calculate routes"""
         try:
-            destinations = load_json("destinations.json")
-            origins = load_json("home_options.json")
+            # Use the centralized function from main.py
+            route_data, origin_scores, destinations = load_and_process_routing_data(self.routing_client, costing)
+            
+            # Convert to pandas DataFrames with proper column mapping
+            routes_df = pd.DataFrame([{
+                "origin": route["origin"],
+                "destination": route["destination"],
+                "travel_time": route["travel_time"],
+                "weight": route["weight"],
+                "weighted_time": route["weighted_time"],
+                "departure_time_to": route["departure_time_to"],
+                "departure_time_from": route["departure_time_from"],
+                "day_of_week": route["day_of_week"],
+                "origin_lat": route["origin_coords"][0],
+                "origin_lng": route["origin_coords"][1],
+                "dest_lat": route["dest_coords"][0],
+                "dest_lng": route["dest_coords"][1]
+            } for route in route_data])
+            origins_df = pd.DataFrame([{
+                "origin": score["name"],
+                "total_score": score["total_score"],
+                "avg_score": score["avg_score"],
+                "valid_routes": score["valid_routes"],
+                "lat": score["coords"][0],
+                "lng": score["coords"][1]
+            } for score in origin_scores])
+            
+            destinations_df = pd.DataFrame([{
+                "name": dest["name"],
+                "weight": dest.get("weight", 1.0),
+                "departure_time_to": dest.get("departure_time_to", "N/A"),
+                "departure_time_from": dest.get("departure_time_from", "N/A"),
+                "day_of_week": dest.get("day_of_week", "N/A"),
+                "lat": dest["coords"][0],
+                "lng": dest["coords"][1]
+            } for dest in destinations])
+            
+            # Log summary
+            logger.info(f"Processed {len(origin_scores)} origins and {len(destinations)} destinations")
+            if isinstance(self.routing_client.routing_client, GoogleRoutingClient):
+                logger.info("Using Google routing client through cache")
+            
+            return routes_df, origins_df, destinations_df
+            
         except FileNotFoundError:
             logger.error("destinations.json or home_options.json not found")
             return pd.DataFrame(), pd.DataFrame(), pd.DataFrame()
-        
-        # Geocode locations
-        for dest in destinations:
-            try:
-                dest["coords"] = self.routing_client.geocode(dest["name"])
-                if isinstance(self.routing_client, GoogleRoutingClient):
-                    self.google_request_count += 1
-            except Exception as e:
-                logger.error(f"Failed to geocode destination {dest['name']}: {e}")
-                dest["coords"] = [0, 0]
-        
-        for origin in origins:
-            try:
-                origin["coords"] = self.routing_client.geocode(origin["name"])
-                if isinstance(self.routing_client, GoogleRoutingClient):
-                    self.google_request_count += 1
-            except Exception as e:
-                logger.error(f"Failed to geocode origin {origin['name']}: {e}")
-                origin["coords"] = [0, 0]
-        
-        # Calculate routes and scores
-        route_data = []
-        origin_scores = []
-        
-        for origin in origins:
-            total_score = 0
-            valid_routes = 0
-            
-            for dest in destinations:
-                try:
-                    departure_time_to = dest.get("departure_time_to")
-                    departure_time_from = dest.get("departure_time_from")
-                    day_of_week = dest.get("day_of_week")
-                    
-                    response = self.routing_client.get_route(
-                        origin["coords"], dest["coords"], costing=costing,
-                        departure_time=departure_time_to, day_of_week=day_of_week
-                    )
-                    if isinstance(self.routing_client, GoogleRoutingClient):
-                        self.google_request_count += 1
-                    
-                    if "trip" in response and "summary" in response["trip"]:
-                        time_min = response["trip"]["summary"].get("time")
-                        if time_min is not None:
-                            weighted_time = time_min * dest.get("weight", 1.0)
-                            total_score += weighted_time
-                            valid_routes += 1
-                            
-                            route_data.append({
-                                "origin": origin["name"],
-                                "destination": dest["name"],
-                                "travel_time": time_min,
-                                "weight": dest.get("weight", 1.0),
-                                "weighted_time": weighted_time,
-                                "departure_time_to": departure_time_to,
-                                "departure_time_from": departure_time_from,
-                                "day_of_week": day_of_week,
-                                "origin_lat": origin["coords"][0],
-                                "origin_lng": origin["coords"][1],
-                                "dest_lat": dest["coords"][0],
-                                "dest_lng": dest["coords"][1]
-                            })
-                except Exception as e:
-                    logger.error(f"Route calculation failed: {origin['name']} -> {dest['name']}: {e}")
-            
-            if valid_routes > 0:
-                avg_score = total_score / valid_routes
-                origin_scores.append({
-                    "origin": origin["name"],
-                    "total_score": total_score,
-                    "avg_score": avg_score,
-                    "valid_routes": valid_routes,
-                    "lat": origin["coords"][0],
-                    "lng": origin["coords"][1]
-                })
-        
-        # Log summary
-        logger.info(f"Processed {len(origins)} origins and {len(destinations)} destinations")
-        if isinstance(self.routing_client, GoogleRoutingClient):
-            logger.info(f"Total Google API requests: {self.google_request_count}")
-        
-        # Create DataFrames
-        routes_df = pd.DataFrame(route_data)
-        origins_df = pd.DataFrame(origin_scores)
-        destinations_df = pd.DataFrame([{
-            "name": dest["name"],
-            "weight": dest.get("weight", 1.0),
-            "departure_time_to": dest.get("departure_time_to", "N/A"),
-            "departure_time_from": dest.get("departure_time_from", "N/A"),
-            "day_of_week": dest.get("day_of_week", "N/A"),
-            "lat": dest["coords"][0],
-            "lng": dest["coords"][1]
-        } for dest in destinations])
-        
-        return routes_df, origins_df, destinations_df
+        except Exception as e:
+            logger.error(f"Error processing routing data: {e}")
+            return pd.DataFrame(), pd.DataFrame(), pd.DataFrame()
     
     def setup_layout(self):
         """Setup the dashboard layout"""

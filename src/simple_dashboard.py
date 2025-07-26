@@ -2,7 +2,7 @@ import json
 import webbrowser
 import os
 from datetime import datetime
-from main import setup_routing_client, load_json
+from main import setup_routing_client, load_and_process_routing_data
 from dotenv import load_dotenv
 
 # Load environment variables
@@ -16,88 +16,20 @@ class SimpleHTMLDashboard:
     def load_and_process_data(self, costing="auto"):
         """Load destinations and origins, calculate routes"""
         try:
-            destinations = load_json("destinations.json")
-            origins = load_json("home_options.json")
+            # Use the centralized function from main.py
+            route_data, origin_scores, destinations = load_and_process_routing_data(self.routing_client, costing)
+            
+            # Sort origins by average score (best first)
+            origin_scores.sort(key=lambda x: x["avg_score"])
+            
+            return route_data, origin_scores, destinations
+            
         except FileNotFoundError as e:
             print(f"Error loading JSON files: {e}")
             return [], [], []
-        
-        # Geocode locations
-        for dest in destinations:
-            try:
-                dest["coords"] = self.routing_client.geocode(dest["name"])
-            except Exception as e:
-                print(f"Failed to geocode destination {dest['name']}: {e}")
-                dest["coords"] = [0, 0]
-        
-        for origin in origins:
-            try:
-                origin["coords"] = self.routing_client.geocode(origin["name"])
-            except Exception as e:
-                print(f"Failed to geocode origin {origin['name']}: {e}")
-                origin["coords"] = [0, 0]
-        
-        # Calculate routes and scores
-        route_data = []
-        origin_scores = []
-        
-        for origin in origins:
-            total_score = 0
-            valid_routes = 0
-            origin_routes = []
-            
-            for dest in destinations:
-                try:
-                    departure_time_to = dest.get("departure_time_to")
-                    departure_time_from = dest.get("departure_time_from")
-                    day_of_week = dest.get("day_of_week")
-                    
-                    response = self.routing_client.get_route(
-                        origin["coords"], dest["coords"], costing=costing,
-                        departure_time=departure_time_to, day_of_week=day_of_week
-                    )
-                    
-                    if "trip" in response and "summary" in response["trip"]:
-                        time_min = response["trip"]["summary"].get("time")
-                        if time_min is not None:
-                            weighted_time = time_min * dest.get("weight", 1.0)
-                            total_score += weighted_time
-                            valid_routes += 1
-                            
-                            route_info = {
-                                "destination": dest["name"],
-                                "travel_time": round(time_min, 2),
-                                "weight": dest.get("weight", 1.0),
-                                "weighted_time": round(weighted_time, 2),
-                                "departure_time_to": departure_time_to,
-                                "departure_time_from": departure_time_from,
-                                "day_of_week": day_of_week
-                            }
-                            origin_routes.append(route_info)
-                            route_data.append({
-                                "origin": origin["name"],
-                                **route_info,
-                                "origin_coords": origin["coords"],
-                                "dest_coords": dest["coords"]
-                            })
-                except Exception as e:
-                    print(f"Route calculation failed: {origin['name']} -> {dest['name']}: {e}")
-            
-            if valid_routes > 0:
-                avg_score = total_score / valid_routes
-                origin_scores.append({
-                    "name": origin["name"],
-                    "total_score": round(total_score, 2),
-                    "avg_score": round(avg_score, 2),
-                    "valid_routes": valid_routes,
-                    "coords": origin["coords"],
-                    "routes": origin_routes
-                })
-        
-        # Sort origins by average score (best first)
-        origin_scores.sort(key=lambda x: x["avg_score"])
-        
-        return route_data, origin_scores, destinations
+        except Exception as e:
+            print(f"Error processing routing data: {e}")
+            return [], [], []
     
     def generate_html_dashboard(self, route_data, origin_scores, destinations, costing="auto"):
         """Generate HTML dashboard"""
