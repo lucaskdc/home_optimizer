@@ -189,14 +189,23 @@ class RoutingDashboard:
         )
         origins_chart.update_layout(height=400)
         
-        # Routes heatmap
+        # Routes heatmap - use group names for grouped destinations
         if not routes_df.empty:
-            pivot_data = routes_df.pivot(index='origin', columns='destination', values='travel_time')
+            # Create a copy of routes_df for heatmap display
+            heatmap_df = routes_df.copy()
+            
+            # Replace destination names with group names for grouped destinations
+            heatmap_df['display_destination'] = heatmap_df.apply(
+                lambda row: row['group'] if row['group'] != 'individual' else row['destination'], 
+                axis=1
+            )
+            
+            pivot_data = heatmap_df.pivot(index='origin', columns='display_destination', values='travel_time')
             heatmap_fig = px.imshow(
                 pivot_data,
                 aspect='auto',
-                title='Travel Times Heatmap (minutes)',
-                labels=dict(x="Destinations", y="Origins", color="Travel Time (min)")
+                title='Travel Times Heatmap (minutes) - Grouped by Category',
+                labels=dict(x="Destinations/Groups", y="Origins", color="Travel Time (min)")
             )
             heatmap_fig.update_layout(height=400)
         else:
