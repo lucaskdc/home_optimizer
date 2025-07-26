@@ -141,8 +141,8 @@ class RoutingDashboard:
                 marker=dict(size=12, color='blue'),
                 text=origins_df['origin'],
                 name='Potential Homes',
-                hovertemplate='<b>%{text}</b><br>Avg Score: %{customdata:.2f}<extra></extra>',
-                customdata=origins_df['avg_score']
+                hovertemplate='<b>%{text}</b><br>Total Weighted Time: %{customdata:.2f} min<extra></extra>',
+                customdata=origins_df['total_score']
             ))
         
         # Add destination points
@@ -180,12 +180,12 @@ class RoutingDashboard:
         
         # Origin scores bar chart
         origins_chart = px.bar(
-            origins_df.sort_values('avg_score'),
-            x='avg_score',
+            origins_df.sort_values('total_score'),
+            x='total_score',
             y='origin',
             orientation='h',
-            title='Average Travel Time by Location (Lower is Better)',
-            labels={'avg_score': 'Average Weighted Time (minutes)', 'origin': 'Location'}
+            title='Total Weighted Travel Time by Location (Lower is Better)',
+            labels={'total_score': 'Total Weighted Time (minutes)', 'origin': 'Location'}
         )
         origins_chart.update_layout(height=400)
         
@@ -233,9 +233,9 @@ class RoutingDashboard:
                 ], style={'textAlign': 'center', 'width': '24%', 'display': 'inline-block'}),
                 
                 html.Div([
-                    html.H4(f"{origins_df['avg_score'].min():.1f} min" if not origins_df.empty else "N/A", 
+                    html.H4(f"{origins_df['total_score'].min():.1f} min" if not origins_df.empty else "N/A", 
                            style={'color': 'orange', 'margin': 0}),
-                    html.P("Best Average Time", style={'margin': 0})
+                    html.P("Best Total Weighted Time", style={'margin': 0})
                 ], style={'textAlign': 'center', 'width': '24%', 'display': 'inline-block'})
             ])
         ], style={'marginBottom': 30, 'padding': '20px', 'backgroundColor': '#f8f9fa', 'borderRadius': '10px'})
