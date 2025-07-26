@@ -5,3 +5,4 @@ requests
 dash
 plotly
 pandas
+pymongo

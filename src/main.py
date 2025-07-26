@@ -7,6 +7,10 @@ import requests
 from abc import ABC, abstractmethod
 import os
 from dotenv import load_dotenv
+from pymongo import MongoClient
+import hashlib
+import pickle
+from datetime import datetime
 
 # Load environment variables
 load_dotenv()
@@ -21,6 +25,10 @@ class RoutingClient(ABC):
 
     @abstractmethod
     def get_route(self, origin, destination, costing="auto"):
+        pass
+
+    @abstractmethod
+    def get_name(self):
         pass
 
 # --- Valhalla Implementation ---
@@ -38,6 +46,9 @@ class ValhallaRoutingClient(RoutingClient):
 
     def get_route(self, origin, destination, costing="auto"):
         return self.valhalla.get_route(origin, destination, costing=costing)
+
+    def get_name(self):
+        return "Valhalla"
 
 # --- Google Implementation ---
 
@@ -85,6 +96,76 @@ class GoogleRoutingClient(RoutingClient):
                 }
             }
         }
+
+    def get_name(self):
+        return "Google"
+
+# --- MongoDB Cache ---
+
+class MongoCache:
+    def __init__(self, mongo_url="mongodb://localhost:27017", db_name="routing_cache", collection_name="cache"):
+        self.client = MongoClient(mongo_url)
+        self.db = self.client[db_name]
+        self.collection = self.db[collection_name]
+        self.collection.create_index("key", unique=True)
+
+    def get(self, key):
+        result = self.collection.find_one({"key": key})
+        if result:
+            return pickle.loads(result["value"])
+        return None
+
+    def set(self, key, value, metadata=None):
+        if metadata is None:
+            metadata = {}
+        self.collection.update_one(
+            {"key": key},
+            {"$set": {
+                "value": pickle.dumps(value),
+                "metadata": metadata,
+                "timestamp": datetime.utcnow()
+            }},
+            upsert=True
+        )
+
+# --- Cached Routing Client ---
+
+class CachedRoutingClient(RoutingClient):
+    def __init__(self, routing_client, cache):
+        self.routing_client = routing_client
+        self.cache = cache
+
+    def _generate_key(self, method, *args, **kwargs):
+        key_data = (self.routing_client.get_name(), method, args, frozenset(kwargs.items()))
+        return hashlib.sha256(pickle.dumps(key_data)).hexdigest()
+
+    def geocode(self, address):
+        key = self._generate_key("geocode", address)
+        cached_result = self.cache.get(key)
+        if cached_result is not None:
+            return cached_result
+
+        result = self.routing_client.geocode(address)
+        metadata = {"method": "geocode", "address": address, "client_name": self.routing_client.get_name()}
+        self.cache.set(key, result, metadata)
+        return result
+
+    def get_route(self, origin, destination, costing="auto"):
+        key = self._generate_key("get_route", origin, destination, costing=costing)
+        cached_result = self.cache.get(key)
+        if cached_result is not None:
+            return cached_result
+
+        result = self.routing_client.get_route(origin, destination, costing=costing)
+        metadata = {
+            "method": "get_route",
+            "origin": origin,
+            "destination": destination,
+            "costing": costing,
+            "client_name": self.routing_client.get_name()
+        }
+        self.cache.set(key, result, metadata)
+        return result
 
 # --- Main logic ---
 
@@ -174,5 +255,10 @@ if __name__ == "__main__":
         NOMINATIM_URL = os.getenv("NOMINATIM_URL", "http://[::1]:9000/nominatim")
         routing_client = ValhallaRoutingClient(VALHALLA_URL, NOMINATIM_URL)
 
-    main(routing_client)
+    # Add caching
+    mongo_url = os.getenv("MONGO_URL", "mongodb://localhost:27017")
+    cache = MongoCache(mongo_url)
+    cached_routing_client = CachedRoutingClient(routing_client, cache)
+
+    main(cached_routing_client)
     print("END")
