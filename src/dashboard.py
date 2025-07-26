@@ -63,8 +63,13 @@ class RoutingDashboard:
             
             for dest in destinations:
                 try:
+                    departure_time_to = dest.get("departure_time_to")
+                    departure_time_from = dest.get("departure_time_from")
+                    day_of_week = dest.get("day_of_week")
+                    
                     response = self.routing_client.get_route(
-                        origin["coords"], dest["coords"], costing=costing
+                        origin["coords"], dest["coords"], costing=costing,
+                        departure_time=departure_time_to, day_of_week=day_of_week
                     )
                     if isinstance(self.routing_client, GoogleRoutingClient):
                         self.google_request_count += 1
@@ -82,6 +87,9 @@ class RoutingDashboard:
                                 "travel_time": time_min,
                                 "weight": dest.get("weight", 1.0),
                                 "weighted_time": weighted_time,
+                                "departure_time_to": departure_time_to,
+                                "departure_time_from": departure_time_from,
+                                "day_of_week": day_of_week,
                                 "origin_lat": origin["coords"][0],
                                 "origin_lng": origin["coords"][1],
                                 "dest_lat": dest["coords"][0],
@@ -112,6 +120,9 @@ class RoutingDashboard:
         destinations_df = pd.DataFrame([{
             "name": dest["name"],
             "weight": dest.get("weight", 1.0),
+            "departure_time_to": dest.get("departure_time_to", "N/A"),
+            "departure_time_from": dest.get("departure_time_from", "N/A"),
+            "day_of_week": dest.get("day_of_week", "N/A"),
             "lat": dest["coords"][0],
             "lng": dest["coords"][1]
         } for dest in destinations])
@@ -180,6 +191,12 @@ class RoutingDashboard:
         
         # Add destination points
         if not destinations_df.empty:
+            hover_text = destinations_df.apply(
+                lambda row: f"<b>{row['name']}</b><br>Weight: {row['weight']}<br>"
+                           f"Departure To: {row['departure_time_to']}<br>"
+                           f"Departure From: {row['departure_time_from']}<br>"
+                           f"Day: {row['day_of_week']}", axis=1
+            )
             map_fig.add_trace(go.Scattermapbox(
                 lat=destinations_df['lat'],
                 lon=destinations_df['lng'],
@@ -187,8 +204,8 @@ class RoutingDashboard:
                 marker=dict(size=10, color='red'),
                 text=destinations_df['name'],
                 name='Destinations',
-                hovertemplate='<b>%{text}</b><br>Weight: %{customdata}<extra></extra>',
-                customdata=destinations_df['weight']
+                hovertemplate='%{customdata}<extra></extra>',
+                customdata=hover_text
             ))
         
         # Set map layout
@@ -259,7 +276,8 @@ class RoutingDashboard:
         ], style={'marginBottom': 30, 'padding': '20px', 'backgroundColor': '#f8f9fa', 'borderRadius': '10px'})
         
         # Data table
-        table_data = routes_df[['origin', 'destination', 'travel_time', 'weight', 'weighted_time']].round(2)
+        table_data = routes_df[['origin', 'destination', 'travel_time', 'weight', 'weighted_time', 
+                               'departure_time_to', 'departure_time_from', 'day_of_week']].round(2)
         
         return html.Div([
             summary_stats,
@@ -290,7 +308,10 @@ class RoutingDashboard:
                         {'name': 'Destination', 'id': 'destination'},
                         {'name': 'Travel Time (min)', 'id': 'travel_time', 'type': 'numeric', 'format': {'specifier': '.1f'}},
                         {'name': 'Weight', 'id': 'weight', 'type': 'numeric', 'format': {'specifier': '.1f'}},
-                        {'name': 'Weighted Time', 'id': 'weighted_time', 'type': 'numeric', 'format': {'specifier': '.1f'}}
+                        {'name': 'Weighted Time', 'id': 'weighted_time', 'type': 'numeric', 'format': {'specifier': '.1f'}},
+                        {'name': 'Departure To', 'id': 'departure_time_to'},
+                        {'name': 'Departure From', 'id': 'departure_time_from'},
+                        {'name': 'Day of Week', 'id': 'day_of_week'}
                     ],
                     sort_action='native',
                     filter_action='native',

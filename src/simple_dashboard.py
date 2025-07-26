@@ -48,8 +48,13 @@ class SimpleHTMLDashboard:
             
             for dest in destinations:
                 try:
+                    departure_time_to = dest.get("departure_time_to")
+                    departure_time_from = dest.get("departure_time_from")
+                    day_of_week = dest.get("day_of_week")
+                    
                     response = self.routing_client.get_route(
-                        origin["coords"], dest["coords"], costing=costing
+                        origin["coords"], dest["coords"], costing=costing,
+                        departure_time=departure_time_to, day_of_week=day_of_week
                     )
                     
                     if "trip" in response and "summary" in response["trip"]:
@@ -63,7 +68,10 @@ class SimpleHTMLDashboard:
                                 "destination": dest["name"],
                                 "travel_time": round(time_min, 2),
                                 "weight": dest.get("weight", 1.0),
-                                "weighted_time": round(weighted_time, 2)
+                                "weighted_time": round(weighted_time, 2),
+                                "departure_time_to": departure_time_to,
+                                "departure_time_from": departure_time_from,
+                                "day_of_week": day_of_week
                             }
                             origin_routes.append(route_info)
                             route_data.append({
@@ -110,7 +118,10 @@ class SimpleHTMLDashboard:
             "destinations": [{
                 "name": dest["name"],
                 "coords": dest["coords"],
-                "weight": dest.get("weight", 1.0)
+                "weight": dest.get("weight", 1.0),
+                "departure_time_to": dest.get("departure_time_to", "N/A"),
+                "departure_time_from": dest.get("departure_time_from", "N/A"),
+                "day_of_week": dest.get("day_of_week", "N/A")
             } for dest in destinations]
         }
         
@@ -229,12 +240,17 @@ class SimpleHTMLDashboard:
             width: 100%;
             border-collapse: collapse;
             margin-top: 15px;
+            overflow-x: auto;
+            display: block;
+            white-space: nowrap;
         }}
         
         th, td {{
-            padding: 12px;
+            padding: 8px;
             text-align: left;
             border-bottom: 1px solid #ddd;
+            font-size: 0.9em;
+            min-width: 80px;
         }}
         
         th {{
@@ -381,6 +397,9 @@ class SimpleHTMLDashboard:
                         <th>Travel Time (min)</th>
                         <th>Weight</th>
                         <th>Weighted Time</th>
+                        <th>Departure To</th>
+                        <th>Departure From</th>
+                        <th>Day of Week</th>
                     </tr>
                 </thead>
                 <tbody>
@@ -395,6 +414,9 @@ class SimpleHTMLDashboard:
                         <td>{route['travel_time']}</td>
                         <td>{route['weight']}</td>
                         <td>{route['weighted_time']}</td>
+                        <td>{route.get('departure_time_to', 'N/A')}</td>
+                        <td>{route.get('departure_time_from', 'N/A')}</td>
+                        <td>{route.get('day_of_week', 'N/A')}</td>
                     </tr>
 """
         
@@ -452,7 +474,10 @@ class SimpleHTMLDashboard:
                     .addTo(map)
                     .bindPopup(`
                         <strong>${{dest.name}}</strong><br>
-                        Weight: ${{dest.weight}}
+                        Weight: ${{dest.weight}}<br>
+                        Departure To: ${{dest.departure_time_to}}<br>
+                        Departure From: ${{dest.departure_time_from}}<br>
+                        Day: ${{dest.day_of_week}}
                     `)
                     .setIcon(L.icon({{
                         iconUrl: 'https://raw.githubusercontent.com/pointhi/leaflet-color-markers/master/img/marker-icon-2x-red.png',
