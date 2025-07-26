@@ -7,15 +7,21 @@ import json
 import os
 from main import GoogleRoutingClient, ValhallaRoutingClient, Costing, load_json
 from dotenv import load_dotenv
+import logging
 
 # Load environment variables
 load_dotenv()
 load_dotenv('.env.local', override=True)
 
+# Configure logging
+logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
+logger = logging.getLogger(__name__)
+
 class RoutingDashboard:
     def __init__(self):
         self.app = dash.Dash(__name__)
         self.routing_client = self._setup_routing_client()
+        self.google_request_count = 0  # Track Google API requests
         self.setup_layout()
         self.setup_callbacks()
         
@@ -27,10 +33,12 @@ class RoutingDashboard:
             GOOGLE_API_KEY = os.getenv("GOOGLE_API_KEY")
             if not GOOGLE_API_KEY:
                 raise ValueError("GOOGLE_API_KEY not found in environment variables")
+            logger.info("Using Google Routing Client")
             return GoogleRoutingClient(GOOGLE_API_KEY)
         else:
             VALHALLA_URL = os.getenv("VALHALLA_URL", "http://[::1]:9000/valhalla")
             NOMINATIM_URL = os.getenv("NOMINATIM_URL", "http://[::1]:9000/nominatim")
+            logger.info("Using Valhalla Routing Client")
             return ValhallaRoutingClient(VALHALLA_URL, NOMINATIM_URL)
     
     def load_and_process_data(self, costing="auto"):
@@ -39,21 +47,26 @@ class RoutingDashboard:
             destinations = load_json("destinations.json")
             origins = load_json("home_options.json")
         except FileNotFoundError:
+            logger.error("destinations.json or home_options.json not found")
             return pd.DataFrame(), pd.DataFrame(), pd.DataFrame()
         
         # Geocode locations
         for dest in destinations:
             try:
                 dest["coords"] = self.routing_client.geocode(dest["name"])
+                if isinstance(self.routing_client, GoogleRoutingClient):
+                    self.google_request_count += 1
             except Exception as e:
-                print(f"Failed to geocode destination {dest['name']}: {e}")
+                logger.error(f"Failed to geocode destination {dest['name']}: {e}")
                 dest["coords"] = [0, 0]
         
         for origin in origins:
             try:
                 origin["coords"] = self.routing_client.geocode(origin["name"])
+                if isinstance(self.routing_client, GoogleRoutingClient):
+                    self.google_request_count += 1
             except Exception as e:
-                print(f"Failed to geocode origin {origin['name']}: {e}")
+                logger.error(f"Failed to geocode origin {origin['name']}: {e}")
                 origin["coords"] = [0, 0]
         
         # Calculate routes and scores
@@ -69,6 +82,8 @@ class RoutingDashboard:
                     response = self.routing_client.get_route(
                         origin["coords"], dest["coords"], costing=costing
                     )
+                    if isinstance(self.routing_client, GoogleRoutingClient):
+                        self.google_request_count += 1
                     
                     if "trip" in response and "summary" in response["trip"]:
                         time_min = response["trip"]["summary"].get("time")
@@ -89,7 +104,7 @@ class RoutingDashboard:
                                 "dest_lng": dest["coords"][1]
                             })
                 except Exception as e:
-                    print(f"Route calculation failed: {origin['name']} -> {dest['name']}: {e}")
+                    logger.error(f"Route calculation failed: {origin['name']} -> {dest['name']}: {e}")
             
             if valid_routes > 0:
                 avg_score = total_score / valid_routes
@@ -101,6 +116,11 @@ class RoutingDashboard:
                     "lat": origin["coords"][0],
                     "lng": origin["coords"][1]
                 })
+        
+        # Log summary
+        logger.info(f"Processed {len(origins)} origins and {len(destinations)} destinations")
+        if isinstance(self.routing_client, GoogleRoutingClient):
+            logger.info(f"Total Google API requests: {self.google_request_count}")
         
         # Create DataFrames
         routes_df = pd.DataFrame(route_data)

@@ -11,10 +11,15 @@ from pymongo import MongoClient
 import hashlib
 from datetime import datetime, timedelta
 from typing import List, Dict, Tuple, Union, Optional
+import logging
 
 # Load environment variables
 load_dotenv()
 load_dotenv('.env.local', override=True)  # loads .env.local and overrides .env values
+
+# Configure logging
+logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
+logger = logging.getLogger(__name__)
 
 # --- Interfaces ---
 
@@ -151,8 +156,10 @@ class CachedRoutingClient(RoutingClient):
         key = self._generate_key("get_route", origin, destination, costing=costing, departure_time=departure_time, day_of_week=day_of_week)
         cached_result = self.cache.get(key)
         if cached_result is not None:
+            logger.info(f"Cache hit for route: {origin} -> {destination}")
             return cached_result
 
+        logger.info(f"Cache miss for route: {origin} -> {destination}")
         result = self.routing_client.get_route(origin, destination, costing=costing)
         metadata = {
             "method": "get_route",
@@ -164,6 +171,7 @@ class CachedRoutingClient(RoutingClient):
             "client_name": self.routing_client.get_name()
         }
         self.cache.set(key, result, metadata)
+        logger.info(f"Route calculated and cached: {origin} -> {destination}")
         return result
 
 # --- Main logic ---
@@ -189,13 +197,13 @@ def calculate_score(origin: Dict, destinations: List[Dict], routing_client: Rout
             departure_time_from = dest.get("departure_time_from")
             day_of_week = dest.get("day_of_week")
 
-            # Calculate route to the destination
+            logger.info(f"Calculating route to destination: {dest['name']}")
             response_to = routing_client.get_route(
                 origin["coords"], dest["coords"], costing=costing, 
                 departure_time=departure_time_to, day_of_week=day_of_week
             )
 
-            # Calculate route from the destination
+            logger.info(f"Calculating route from destination: {dest['name']}")
             response_from = routing_client.get_route(
                 dest["coords"], origin["coords"], costing=costing, 
                 departure_time=departure_time_from, day_of_week=day_of_week
@@ -208,7 +216,7 @@ def calculate_score(origin: Dict, destinations: List[Dict], routing_client: Rout
                 time_from = response_from["trip"]["summary"].get("time")
 
                 if time_to is None or time_from is None:
-                    print(f"No time for route from {origin['name']} to {dest['name']} or back")
+                    logger.warning(f"No time for route from {origin['name']} to {dest['name']} or back")
                     continue
 
                 total_time = time_to + time_from
@@ -216,14 +224,15 @@ def calculate_score(origin: Dict, destinations: List[Dict], routing_client: Rout
                 score += weighted
                 valid_count += 1
 
-                print(f"Roundtrip from {origin['name']} to {dest['name']}: {total_time:.2f} min (weight {dest.get('weight', 1.0)})")
+                logger.info(f"Roundtrip from {origin['name']} to {dest['name']}: {total_time:.2f} min (weight {dest.get('weight', 1.0)})")
             else:
-                print(f"No summary for roundtrip from {origin['name']} to {dest['name']}")
+                logger.warning(f"No summary for roundtrip from {origin['name']} to {dest['name']}")
         except Exception as e:
-            print(f"Error for roundtrip from {origin['name']} to {dest['name']}: {e}")
+            logger.error(f"Error for roundtrip from {origin['name']} to {dest['name']}: {e}")
     return score, valid_count
 
 def main(routing_client: RoutingClient):
+    logger.info("Starting main function")
     destinations = load_json("destinations.json")
     origins = load_json("home_options.json")
 
@@ -243,13 +252,13 @@ def main(routing_client: RoutingClient):
     for origin in origins:
         score, valid_count = calculate_score(origin, destinations, routing_client, costing)
         if valid_count > 0:
-            print(f"Total score for origin {origin['name']}: {score} (valid routes: {valid_count})")
+            logger.info(f"Total score for origin {origin['name']}: {score} (valid routes: {valid_count})")
             avg_score = score / valid_count
             heat_data.append([origin["coords"][0], origin["coords"][1], avg_score])
         else:
-            print(f"No valid routes for origin {origin['name']}")
+            logger.warning(f"No valid routes for origin {origin['name']}")
 
-    # Plot heatmap
+    logger.info("Generating heatmap")
     m = folium.Map(location=destination_points[0], zoom_start=13)
     HeatMap(heat_data, radius=20, blur=0, max_zoom=13).add_to(m)
     for dest in destinations:
@@ -264,6 +273,7 @@ def main(routing_client: RoutingClient):
     map_file = "weighted_distance_heatmap.html"
     m.save(map_file)
     webbrowser.open(map_file)
+    logger.info("Heatmap saved and opened in browser")
 
 if __name__ == "__main__":
     # Choose the provider here:
