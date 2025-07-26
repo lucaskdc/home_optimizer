@@ -9,7 +9,6 @@ import os
 from dotenv import load_dotenv
 from pymongo import MongoClient
 import hashlib
-import pickle
 from datetime import datetime
 
 # Load environment variables
@@ -27,8 +26,9 @@ class RoutingClient(ABC):
     def get_route(self, origin, destination, costing="auto"):
         pass
 
+    @property
     @abstractmethod
-    def get_name(self):
+    def name(self):
         pass
 
 # --- Valhalla Implementation ---
@@ -47,7 +47,8 @@ class ValhallaRoutingClient(RoutingClient):
     def get_route(self, origin, destination, costing="auto"):
         return self.valhalla.get_route(origin, destination, costing=costing)
 
-    def get_name(self):
+    @property
+    def name(self):
         return "Valhalla"
 
 # --- Google Implementation ---
@@ -97,7 +98,8 @@ class GoogleRoutingClient(RoutingClient):
             }
         }
 
-    def get_name(self):
+    @property
+    def name(self):
         return "Google"
 
 # --- MongoDB Cache ---
@@ -112,7 +114,7 @@ class MongoCache:
     def get(self, key):
         result = self.collection.find_one({"key": key})
         if result:
-            return pickle.loads(result["value"])
+            return json.loads(result["value"])
         return None
 
     def set(self, key, value, metadata=None):
@@ -121,7 +123,7 @@ class MongoCache:
         self.collection.update_one(
             {"key": key},
             {"$set": {
-                "value": pickle.dumps(value),
+                "value": json.dumps(value),
                 "metadata": metadata,
                 "timestamp": datetime.utcnow()
             }},
@@ -136,8 +138,13 @@ class CachedRoutingClient(RoutingClient):
         self.cache = cache
 
     def _generate_key(self, method, *args, **kwargs):
-        key_data = (self.routing_client.get_name(), method, args, frozenset(kwargs.items()))
-        return hashlib.sha256(pickle.dumps(key_data)).hexdigest()
+        key_data = json.dumps({
+            "client_name": self.routing_client.get_name(),
+            "method": method,
+            "args": args,
+            "kwargs": kwargs
+        }, sort_keys=True)
+        return hashlib.sha256(key_data.encode()).hexdigest()
 
     def geocode(self, address):
         key = self._generate_key("geocode", address)
@@ -181,6 +188,27 @@ def load_json(filename):
     with open(filename, "r", encoding="utf-8") as f:
         return json.load(f)
 
+def calculate_score(origin, destinations, routing_client, costing):
+    score = 0
+    valid_count = 0
+    for dest in destinations:
+        try:
+            response = routing_client.get_route(origin["coords"], dest["coords"], costing=costing)
+            if "trip" in response and "summary" in response["trip"]:
+                time_min = response["trip"]["summary"].get("time")
+                if time_min is None:
+                    print(f"No time for route from {origin['name']} to {dest['name']}")
+                    continue
+                weighted = time_min * dest.get("weight", 1.0)
+                score += weighted
+                valid_count += 1
+                print(f"Route from {origin['name']} to {dest['name']}: {time_min:.2f} min (weight {dest.get('weight', 1.0)})")
+            else:
+                print(f"No summary for route from {origin['name']} to {dest['name']}")
+        except Exception as e:
+            print(f"Error for origin {origin['name']} to {dest['name']}: {e}")
+    return score, valid_count
+
 def main(routing_client):
     # Load destinations and origins from JSON files
     destinations = load_json("destinations.json")
@@ -200,24 +228,7 @@ def main(routing_client):
     heat_data = []
 
     for origin in origins:
-        score = 0
-        valid_count = 0
-        for dest in destinations:
-            try:
-                response = routing_client.get_route(origin["coords"], dest["coords"], costing=costing)
-                if "trip" in response and "summary" in response["trip"]:
-                    time_min = response["trip"]["summary"].get("time")
-                    if time_min is None:
-                        print(f"No time for route from {origin['name']} to {dest['name']}")
-                        continue
-                    weighted = time_min * dest.get("weight", 1.0)
-                    score += weighted
-                    valid_count += 1
-                    print(f"Route from {origin['name']} to {dest['name']}: {time_min:.2f} min (weight {dest.get('weight', 1.0)})")
-                else:
-                    print(f"No summary for route from {origin['name']} to {dest['name']}")
-            except Exception as e:
-                print(f"Error for origin {origin['name']} to {dest['name']}: {e}")
+        score, valid_count = calculate_score(origin, destinations, routing_client, costing)
         if valid_count > 0:
             print(f"Total score for origin {origin['name']}: {score} (valid routes: {valid_count})")
             avg_score = score / valid_count
