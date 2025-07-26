@@ -349,6 +349,9 @@ def geocode_locations(routing_client: RoutingClient, destinations: List[Dict], o
 def calculate_routes_and_scores(routing_client: RoutingClient, origins: List[Dict], destinations: List[Dict], costing: str = "auto") -> Tuple[List[Dict], List[Dict]]:
     """Calculate routes and scores for all origin-destination pairs.
     
+    For walking destinations with groups, calculates the shortest walking time to any destination within each group.
+    For auto destinations, calculates individual routes from each origin.
+    
     Returns:
         Tuple of (route_data, origin_scores)
         - route_data: List of route information dictionaries
@@ -358,18 +361,79 @@ def calculate_routes_and_scores(routing_client: RoutingClient, origins: List[Dic
     route_data = []
     origin_scores = []
     
+    # Separate walking and auto destinations
+    walking_destinations = [dest for dest in destinations if dest.get("transport_mode") == "walking"]
+    auto_destinations = [dest for dest in destinations if dest.get("transport_mode", "auto") == "auto"]
+    
+    # Group walking destinations by their group field
+    walking_groups = {}
+    for dest in walking_destinations:
+        group = dest.get("group", "default")
+        if group not in walking_groups:
+            walking_groups[group] = []
+        walking_groups[group].append(dest)
+    
+    logger.info(f"Found {len(walking_destinations)} walking destinations in {len(walking_groups)} groups and {len(auto_destinations)} auto destinations")
+    for group, dests in walking_groups.items():
+        logger.info(f"Walking group '{group}': {len(dests)} destinations")
+    
+    # For each origin, calculate the shortest walking time to each walking group
+    walking_best_routes_by_origin = {}
+    for origin in origins:
+        walking_best_routes_by_origin[origin["name"]] = {}
+        
+        for group_name, group_destinations in walking_groups.items():
+            shortest_time = float('inf')
+            best_route = None
+            
+            logger.info(f"Calculating walking routes for origin {origin['name']} to group '{group_name}'")
+            for dest in group_destinations:
+                try:
+                    response = routing_client.get_route(
+                        origin["coords"], dest["coords"], costing="pedestrian"
+                    )
+                    
+                    if "trip" in response and "summary" in response["trip"]:
+                        time_min = response["trip"]["summary"].get("time")
+                        if time_min is not None and time_min < shortest_time:
+                            shortest_time = time_min
+                            best_route = {
+                                "origin": origin["name"],
+                                "destination": dest["name"],
+                                "group": group_name,
+                                "travel_time": round(time_min, 2),
+                                "weight": group_destinations[0].get("weight", 1.0),  # Use weight from first in group
+                                "weighted_time": round(time_min * group_destinations[0].get("weight", 1.0), 2),
+                                "departure_time_to": dest.get("departure_time_to"),
+                                "departure_time_from": dest.get("departure_time_from"),
+                                "day_of_week": dest.get("day_of_week"),
+                                "origin_coords": origin["coords"],
+                                "dest_coords": dest["coords"],
+                                "transport_mode": "walking",
+                                "is_shortest_in_group": True
+                            }
+                            logger.info(f"New shortest walking route for group '{group_name}': {origin['name']} -> {dest['name']} = {time_min:.2f} min")
+                except Exception as e:
+                    logger.error(f"Walking route calculation failed: {origin['name']} -> {dest['name']}: {e}")
+            
+            if best_route:
+                walking_best_routes_by_origin[origin["name"]][group_name] = best_route
+                logger.info(f"Best walking route for {origin['name']} to group '{group_name}': {best_route['travel_time']:.2f} min to {best_route['destination']}")
+    
+    # Calculate routes for each origin
     for origin in origins:
         total_score = 0
         valid_routes = 0
         origin_routes = []
         
-        for dest in destinations:
+        # Add auto destinations for this origin
+        for dest in auto_destinations:
             try:
                 departure_time_to = dest.get("departure_time_to")
                 departure_time_from = dest.get("departure_time_from")
                 day_of_week = dest.get("day_of_week")
 
-                logger.info(f"Calculating route: {origin['name']} -> {dest['name']}")
+                logger.info(f"Calculating auto route: {origin['name']} -> {dest['name']}")
                 response = routing_client.get_route(
                     origin["coords"], dest["coords"], costing=costing,
                     departure_time=departure_time_to, day_of_week=day_of_week
@@ -392,6 +456,7 @@ def calculate_routes_and_scores(routing_client: RoutingClient, origins: List[Dic
                         route_info = {
                             "origin": origin["name"],
                             "destination": dest["name"],
+                            "group": dest.get("group", "individual"),
                             "travel_time": round(time_min, 2),
                             "weight": dest.get("weight", 1.0),
                             "weighted_time": round(weighted_time, 2),
@@ -399,7 +464,8 @@ def calculate_routes_and_scores(routing_client: RoutingClient, origins: List[Dic
                             "departure_time_from": departure_time_from,
                             "day_of_week": day_of_week,
                             "origin_coords": origin["coords"],
-                            "dest_coords": dest["coords"]
+                            "dest_coords": dest["coords"],
+                            "transport_mode": "auto"
                         }
                         
                         # Add traffic information if available
@@ -411,11 +477,23 @@ def calculate_routes_and_scores(routing_client: RoutingClient, origins: List[Dic
                         origin_routes.append(route_info)
                         route_data.append(route_info)
                         
-                        logger.info(f"Route calculated: {origin['name']} -> {dest['name']} = {time_min:.2f} min")
+                        logger.info(f"Auto route calculated: {origin['name']} -> {dest['name']} = {time_min:.2f} min")
                 else:
                     logger.warning(f"No route summary for {origin['name']} -> {dest['name']}")
             except Exception as e:
-                logger.error(f"Route calculation failed: {origin['name']} -> {dest['name']}: {e}")
+                logger.error(f"Auto route calculation failed: {origin['name']} -> {dest['name']}: {e}")
+        
+        # Add the best walking route for each group (shortest time to any destination in that group)
+        for group_name, walking_route in walking_best_routes_by_origin[origin["name"]].items():
+            weighted_time = walking_route["travel_time"] * walking_route["weight"]
+            total_score += weighted_time
+            valid_routes += 1
+            
+            # Add walking route to this origin's routes and global route data
+            origin_routes.append(walking_route)
+            route_data.append(walking_route)
+            
+            logger.info(f"Added best walking route for group '{group_name}' to {origin['name']} score: {walking_route['travel_time']:.2f} min to {walking_route['destination']}")
         
         if valid_routes > 0:
             avg_score = total_score / valid_routes

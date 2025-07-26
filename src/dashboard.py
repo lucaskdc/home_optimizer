@@ -34,6 +34,7 @@ class RoutingDashboard:
             routes_df = pd.DataFrame([{
                 "origin": route["origin"],
                 "destination": route["destination"],
+                "group": route.get("group", "N/A"),
                 "travel_time": route["travel_time"],
                 "weight": route["weight"],
                 "weighted_time": route["weighted_time"],
@@ -44,6 +45,7 @@ class RoutingDashboard:
                 "origin_lng": route["origin_coords"][1],
                 "dest_lat": route["dest_coords"][0],
                 "dest_lng": route["dest_coords"][1],
+                "transport_mode": route.get("transport_mode", "auto"),
                 "traffic_time": route.get("traffic_time", route["travel_time"]),
                 "normal_time": route.get("normal_time", route["travel_time"]),
                 "traffic_impact_percent": route.get("traffic_impact_percent", 0)
@@ -60,6 +62,8 @@ class RoutingDashboard:
             destinations_df = pd.DataFrame([{
                 "name": dest["name"],
                 "weight": dest.get("weight", 1.0),
+                "transport_mode": dest.get("transport_mode", "auto"),
+                "group": dest.get("group", "individual"),
                 "departure_time_to": dest.get("departure_time_to", "N/A"),
                 "departure_time_from": dest.get("departure_time_from", "N/A"),
                 "day_of_week": dest.get("day_of_week", "N/A"),
@@ -228,7 +232,7 @@ class RoutingDashboard:
         ], style={'marginBottom': 30, 'padding': '20px', 'backgroundColor': '#f8f9fa', 'borderRadius': '10px'})
         
         # Data table
-        table_data = routes_df[['origin', 'destination', 'travel_time', 'traffic_time', 'normal_time', 
+        table_data = routes_df[['origin', 'destination', 'group', 'transport_mode', 'travel_time', 'traffic_time', 'normal_time', 
                                'traffic_impact_percent', 'weight', 'weighted_time', 
                                'departure_time_to', 'departure_time_from', 'day_of_week']].round(2)
         
@@ -259,6 +263,8 @@ class RoutingDashboard:
                     columns=[
                         {'name': 'Origin', 'id': 'origin'},
                         {'name': 'Destination', 'id': 'destination'},
+                        {'name': 'Group', 'id': 'group'},
+                        {'name': 'Transport Mode', 'id': 'transport_mode'},
                         {'name': 'Travel Time (min)', 'id': 'travel_time', 'type': 'numeric', 'format': {'specifier': '.1f'}},
                         {'name': 'Traffic Time (min)', 'id': 'traffic_time', 'type': 'numeric', 'format': {'specifier': '.1f'}},
                         {'name': 'Normal Time (min)', 'id': 'normal_time', 'type': 'numeric', 'format': {'specifier': '.1f'}},

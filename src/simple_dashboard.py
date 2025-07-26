@@ -51,6 +51,8 @@ class SimpleHTMLDashboard:
                 "name": dest["name"],
                 "coords": dest["coords"],
                 "weight": dest.get("weight", 1.0),
+                "transport_mode": dest.get("transport_mode", "auto"),
+                "group": dest.get("group", "individual"),
                 "departure_time_to": dest.get("departure_time_to", "N/A"),
                 "departure_time_from": dest.get("departure_time_from", "N/A"),
                 "day_of_week": dest.get("day_of_week", "N/A")
@@ -326,6 +328,8 @@ class SimpleHTMLDashboard:
                     <tr>
                         <th>Origin</th>
                         <th>Destination</th>
+                        <th>Group</th>
+                        <th>Transport Mode</th>
                         <th>Travel Time (min)</th>
                         <th>Traffic Time (min)</th>
                         <th>Normal Time (min)</th>
@@ -346,10 +350,19 @@ class SimpleHTMLDashboard:
             normal_time = route.get('normal_time', route['travel_time'])
             traffic_impact = route.get('traffic_impact_percent', 0)
             
+            transport_mode_display = {
+                "auto": "🚗 Car",
+                "walking": "🚶 Walking"
+            }.get(route.get('transport_mode', 'auto'), route.get('transport_mode', 'auto'))
+            
+            group_display = route.get('group', 'individual')
+            
             html_content += f"""
                     <tr>
                         <td>{route['origin']}</td>
                         <td>{route['destination']}</td>
+                        <td>{group_display}</td>
+                        <td>{transport_mode_display}</td>
                         <td>{route['travel_time']}</td>
                         <td>{traffic_time}</td>
                         <td>{normal_time}</td>
