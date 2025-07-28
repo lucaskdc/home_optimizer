@@ -547,9 +547,10 @@ def load_and_process_routing_data(routing_client: RoutingClient, costing: str = 
     logger.info("Loading and processing routing data")
     
     # Load data
-    destinations = load_json("destinations.json")
-    origins = load_json("home_options.json")
-    
+    prj_path = os.path.join(os.path.dirname(__file__), os.path.pardir)
+    destinations = load_json(os.path.join(prj_path, "destinations.json"))
+    origins = load_json(os.path.join(prj_path, "home_options.json"))
+
     # Geocode locations
     destinations, origins = geocode_locations(routing_client, destinations, origins)
     

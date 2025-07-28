@@ -6,3 +6,5 @@ dash
 plotly
 pandas
 pymongo
+scipy
+flask
