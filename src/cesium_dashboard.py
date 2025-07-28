@@ -38,7 +38,7 @@ class CesiumDashboard:
             return [], [], []
     
     def create_interpolated_grid(self, origin_scores, grid_size=50, expand_factor=0.1):
-        """Create an interpolated grid for the colored overlay"""
+        """Create an interpolated grid using intelligent distance-based weighting"""
         if len(origin_scores) < 3:
             return None
             
@@ -62,31 +62,77 @@ class CesiumDashboard:
         # Create grid
         lat_grid = np.linspace(lat_min, lat_max, grid_size)
         lon_grid = np.linspace(lon_min, lon_max, grid_size)
-        lon_mesh, lat_mesh = np.meshgrid(lon_grid, lat_grid)
         
-        # Interpolate using griddata
-        points = np.column_stack((lats, lons))
-        grid_points = np.column_stack((lat_mesh.ravel(), lon_mesh.ravel()))
-        
-        # Use cubic interpolation for smooth results
-        interpolated_scores = griddata(
-            points, scores, grid_points, 
-            method='cubic', fill_value=scores.mean()
-        )
-        
-        # Reshape back to grid
-        score_grid = interpolated_scores.reshape(grid_size, grid_size)
-        
-        # Convert to list format for JSON serialization
+        # Convert to list format for JSON serialization with intelligent interpolation
         grid_data = []
-        for i in range(grid_size):
-            for j in range(grid_size):
-                if not np.isnan(score_grid[i, j]):
-                    grid_data.append({
-                        'lat': lat_mesh[i, j],
-                        'lon': lon_mesh[i, j],
-                        'value': float(score_grid[i, j])
-                    })
+        for i, lat in enumerate(lat_grid):
+            for j, lon in enumerate(lon_grid):
+                # Calculate distances to all known points
+                distances = []
+                point_scores = []
+                
+                for k in range(len(lats)):
+                    # Use more accurate distance calculation (Haversine-like)
+                    lat_diff = (lats[k] - lat) * 111  # Convert to km
+                    lon_diff = (lons[k] - lon) * 111 * np.cos(np.radians(lat))  # Adjust for latitude
+                    distance_km = np.sqrt(lat_diff**2 + lon_diff**2)
+                    
+                    distances.append(distance_km)
+                    point_scores.append(scores[k])
+                
+                distances = np.array(distances)
+                point_scores = np.array(point_scores)
+                
+                # Find nearest point and its distance
+                nearest_idx = np.argmin(distances)
+                nearest_distance = distances[nearest_idx]
+                nearest_score = point_scores[nearest_idx]
+                
+                # Intelligent interpolation based on distance decay
+                if nearest_distance <= 2.0:  # Within 2km - use distance-weighted average
+                    # Use inverse distance weighting with exponential decay
+                    # All points within 2km contribute, with varying influence based on distance
+                    weights = []
+                    contributing_scores = []
+                    
+                    for k in range(len(distances)):
+                        if distances[k] <= 2.0:  # Only consider nearby points
+                            # Exponential decay: weight = exp(-distance^2 / sigma^2)
+                            # Closer points get much higher weight, but always some variation
+                            if distances[k] < 0.05:  # Very close (50m) - avoid division by zero
+                                sigma = 0.3  # Tight influence for very close points
+                            elif distances[k] <= 0.5:  # Close (up to 500m)
+                                sigma = 0.4  # Medium influence
+                            else:  # Medium distance (500m - 2km)
+                                sigma = 0.8  # Broader influence
+                            
+                            weight = np.exp(-(distances[k]**2) / (2 * sigma**2))
+                            weights.append(weight)
+                            contributing_scores.append(point_scores[k])
+                    
+                    weights = np.array(weights)
+                    contributing_scores = np.array(contributing_scores)
+                    
+                    if len(weights) > 0 and np.sum(weights) > 0:
+                        # Weighted average with distance-dependent bias
+                        interpolated_score = np.sum(weights * contributing_scores) / np.sum(weights)
+                        
+                        # Add small distance penalty for areas between points
+                        if nearest_distance > 0.1:  # Beyond 100m, add small penalty
+                            distance_penalty = (nearest_distance - 0.1) * 2  # 2 minutes per km beyond 100m
+                            interpolated_score += distance_penalty
+                    else:
+                        interpolated_score = nearest_score + (nearest_distance * 10)  # Heavy penalty for isolated points
+                else:
+                    # Beyond 2km - use nearest score with heavy distance penalty
+                    distance_penalty = (nearest_distance - 0.5) * 8  # 8 minutes per km penalty
+                    interpolated_score = nearest_score + distance_penalty
+                
+                grid_data.append({
+                    'lat': lat,
+                    'lon': lon,
+                    'value': float(interpolated_score)
+                })
         
         return {
             'grid_data': grid_data,
@@ -98,7 +144,7 @@ class CesiumDashboard:
             },
             'value_range': {
                 'min': float(scores.min()),
-                'max': float(scores.max())
+                'max': float(max(scores.max(), scores.max() + 20))  # Extend range to account for penalties
             }
         }
 
