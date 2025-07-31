@@ -399,20 +399,27 @@ def calculate_routes_and_scores(routing_client: RoutingClient, origins: List[Dic
                     departure_time_from = dest.get("departure_time_from")
                     day_of_week = dest.get("day_of_week")
                     
-                    response = routing_client.get_route(
+                    response_to = routing_client.get_route(
                         origin["coords"], dest["coords"], costing=route_costing,
                         departure_time=departure_time_to, day_of_week=day_of_week
                     )
                     
-                    if "trip" in response and "summary" in response["trip"]:
-                        time_min = response["trip"]["summary"].get("time")
-                        
+                    response_from = routing_client.get_route(
+                        origin["coords"], dest["coords"], costing=route_costing,
+                        departure_time=departure_time_from, day_of_week=day_of_week
+                    )
+                    
+                    if ("trip" in response_to and "summary" in response_to["trip"]) and \
+                       ("trip" in response_from and "summary" in response_to["trip"]):
+                        time_min = response_to["trip"]["summary"].get("time") + response_from["trip"]["summary"].get("time")
+
                         # Use traffic-aware time if available
-                        if "traffic_time" in response["trip"]["summary"]:
-                            traffic_time = response["trip"]["summary"]["traffic_time"]
+                        if "traffic_time" in response_to["trip"]["summary"] and \
+                            "traffic_time" in response_from["trip"]["summary"]:
+                            traffic_time = response_to["trip"]["summary"]["traffic_time"] + response_from["trip"]["summary"]["traffic_time"]
                             logger.info(f"Using traffic-aware time: {traffic_time:.2f} min (normal: {time_min:.2f} min)")
                             time_min = traffic_time
-                        
+
                         if time_min is not None and time_min < shortest_time:
                             shortest_time = time_min
                             best_route = {
@@ -430,12 +437,12 @@ def calculate_routes_and_scores(routing_client: RoutingClient, origins: List[Dic
                                 "transport_mode": transport_mode,
                                 "is_shortest_in_group": True
                             }
-                            
+
                             # Add traffic information if available
-                            if "traffic_time" in response["trip"]["summary"]:
-                                best_route["traffic_time"] = round(response["trip"]["summary"]["traffic_time"], 2)
-                                best_route["normal_time"] = round(response["trip"]["summary"]["time"], 2)
-                                best_route["traffic_impact_percent"] = response["trip"]["summary"].get("traffic_impact_percent", 0)
+                            if "traffic_time" in response_to["trip"]["summary"]:
+                                best_route["traffic_time"] = round(response_to["trip"]["summary"]["traffic_time"], 2)
+                                best_route["normal_time"] = round(response_to["trip"]["summary"]["time"], 2)
+                                best_route["traffic_impact_percent"] = response_to["trip"]["summary"].get("traffic_impact_percent", 0)
                             
                             logger.info(f"New shortest route for group '{group_name}': {origin['name']} -> {dest['name']} = {time_min:.2f} min ({transport_mode})")
                 except Exception as e:
@@ -461,25 +468,32 @@ def calculate_routes_and_scores(routing_client: RoutingClient, origins: List[Dic
                 day_of_week = dest.get("day_of_week")
 
                 logger.info(f"Calculating individual route: {origin['name']} -> {dest['name']} ({transport_mode})")
-                response = routing_client.get_route(
+                response_to = routing_client.get_route(
                     origin["coords"], dest["coords"], costing=route_costing,
                     departure_time=departure_time_to, day_of_week=day_of_week
                 )
-                
-                if "trip" in response and "summary" in response["trip"]:
-                    time_min = response["trip"]["summary"].get("time")
-                    
+
+                response_from = routing_client.get_route(
+                    origin["coords"], dest["coords"], costing=route_costing,
+                    departure_time=departure_time_from, day_of_week=day_of_week
+                )
+
+                if ("trip" in response_to and "summary" in response_to["trip"]) and \
+                    ("trip" in response_from and "summary" in response_to["trip"]):
+                    time_min = response_to["trip"]["summary"].get("time") + response_from["trip"]["summary"].get("time")
+
                     # Use traffic-aware time if available
-                    if "traffic_time" in response["trip"]["summary"]:
-                        traffic_time = response["trip"]["summary"]["traffic_time"]
+                    if "traffic_time" in response_to["trip"]["summary"] and \
+                       "traffic_time" in response_from["trip"]["summary"]:
+                        traffic_time = response_to["trip"]["summary"]["traffic_time"] + response_from["trip"]["summary"]["traffic_time"]
                         logger.info(f"Using traffic-aware time: {traffic_time:.2f} min (normal: {time_min:.2f} min)")
                         time_min = traffic_time
-                    
+
                     if time_min is not None:
                         weighted_time = time_min * dest.get("weight", 1.0)
                         total_score += weighted_time
                         valid_routes += 1
-                        
+
                         route_info = {
                             "origin": origin["name"],
                             "destination": dest["name"],
@@ -494,13 +508,13 @@ def calculate_routes_and_scores(routing_client: RoutingClient, origins: List[Dic
                             "dest_coords": dest["coords"],
                             "transport_mode": transport_mode
                         }
-                        
+
                         # Add traffic information if available
-                        if "traffic_time" in response["trip"]["summary"]:
-                            route_info["traffic_time"] = round(response["trip"]["summary"]["traffic_time"], 2)
-                            route_info["normal_time"] = round(response["trip"]["summary"]["time"], 2)
-                            route_info["traffic_impact_percent"] = response["trip"]["summary"].get("traffic_impact_percent", 0)
-                        
+                        if "traffic_time" in response_to["trip"]["summary"]:
+                            route_info["traffic_time"] = round(response_to["trip"]["summary"]["traffic_time"], 2) + round(response_from["trip"]["summary"]["traffic_time"], 2)
+                            route_info["normal_time"] = round(response_to["trip"]["summary"]["time"], 2) + round(response_from["trip"]["summary"]["time"], 2)
+                            route_info["traffic_impact_percent"] = (response_to["trip"]["summary"].get("traffic_impact_percent", 0) + response_from["trip"]["summary"].get("traffic_impact_percent", 0)) / 2
+
                         origin_routes.append(route_info)
                         route_data.append(route_info)
                         
