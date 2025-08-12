@@ -295,13 +295,7 @@ flake8 src/
 
 ## 📄 License
 
-This project is open source. Feel free to use, modify, and distribute according to your needs.
-
-## 🆘 Support
-
-- **Issues**: Report bugs and request features on [GitHub Issues](https://github.com/lucaskdc/home_optimizer/issues)
-- **Discussions**: Join the conversation in [GitHub Discussions](https://github.com/lucaskdc/home_optimizer/discussions)
-- **Documentation**: Check the [Wiki](https://github.com/lucaskdc/home_optimizer/wiki) for detailed guides
+This project is licensed under the AGPL-3.0 License. Feel free to use, modify, and distribute according to the terms of the AGPL license.
 
 ## 🙏 Acknowledgments
 
