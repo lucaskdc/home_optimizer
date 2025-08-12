@@ -1,0 +1,32 @@
+[
+    {
+        "name": "Downtown Apartment",
+        "weight": 5.0,
+        "departure_time_to": "08:00",
+        "departure_time_from": "17:00",
+        "day_of_week": "Monday",
+        "transport_mode": "auto",
+        "group": "work",
+        "coords": [-30.0346, -51.2177]
+    },
+    {
+        "name": "Shopping Mall",
+        "weight": 2.0,
+        "departure_time_to": "10:00",
+        "departure_time_from": "12:00",
+        "day_of_week": "Saturday",
+        "transport_mode": "auto",
+        "group": "shopping",
+        "coords": [-30.0277, -51.2287]
+    },
+    {
+        "name": "University Campus",
+        "weight": 4.0,
+        "departure_time_to": "09:00",
+        "departure_time_from": "18:00",
+        "day_of_week": "Monday",
+        "transport_mode": "auto",
+        "group": "education",
+        "coords": [-30.0732, -51.1209]
+    }
+]

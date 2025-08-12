@@ -4,17 +4,31 @@ A powerful Python application that helps you find the optimal home location base
 
 ## 🌟 Features
 
+- **Unified Web Service**: Single startup command serves all dashboard types through one web interface
 - **Multiple Routing Providers**: Support for both Valhalla (open-source) and Google Maps API with traffic modeling
-- **Interactive Visualizations**: 
-  - 2D heatmaps using Folium
-  - Interactive web dashboards with Dash/Plotly
-  - 3D globe visualization with Cesium.js
+- **Four Dashboard Types**: 
+  - Simple HTML Dashboard (recommended for most users)
+  - Interactive Plotly Dashboard (advanced analytics)
+  - 3D Cesium Globe Visualization (presentations)
+  - Legacy Folium Map (original implementation)
+- **Demo Mode**: Test the application offline with mock data (no external services required)
 - **Smart Destination Analysis**: Configure destinations with weights, preferred times, and transport modes
 - **Traffic-Aware Routing**: Account for real-world traffic patterns and departure times
-- **Caching System**: MongoDB integration for efficient API usage and faster processing
+- **Caching System**: MongoDB integration for efficient API usage and faster processing (optional)
 - **Flexible Configuration**: Easy-to-configure JSON files for homes and destinations
 
 ## 🚀 Quick Start
+
+### Instant Demo (No Setup Required)
+
+```bash
+git clone https://github.com/lucaskdc/home_optimizer.git
+cd home_optimizer
+pip install -r requirements.txt
+DEMO_MODE=true python start.py
+```
+
+Open your browser to `http://localhost:5000` and explore all dashboard types with sample data!
 
 ### Prerequisites
 
@@ -39,6 +53,13 @@ A powerful Python application that helps you find the optimal home location base
    ```bash
    cp .env.example .env
    ```
+
+4. **Start the unified service**:
+   ```bash
+   python start.py
+   ```
+
+5. **Open your browser** to `http://localhost:5000` and choose your preferred dashboard!
 
 ## ⚙️ Configuration
 
@@ -89,6 +110,17 @@ CESIUM_DASHBOARD_PORT=5000
 
 ## 📊 Usage
 
+### Quick Start with Demo Mode
+
+For immediate testing without external services:
+
+```bash
+# Run in demo mode (works offline)
+DEMO_MODE=true python start.py
+```
+
+This launches the unified dashboard service at `http://localhost:5000` with sample data.
+
 ### 1. Configure Your Data
 
 #### Home Options (`home_options.json`)
@@ -135,34 +167,59 @@ Configure your regular destinations with weights and timing:
 - `transport_mode`: `auto`, `walking`, `bicycle`, `transit`
 - `group`: Category for organizing destinations
 
-### 2. Run Analysis
+### 2. Run the Unified Dashboard Service
 
-#### Basic Heatmap Generation
+#### Single Command - All Dashboards
+
 ```bash
+python start.py
+```
+
+This starts a web service at `http://localhost:5000` with access to all dashboard types:
+
+- **Main Menu**: `http://localhost:5000/` - Choose from available dashboards
+- **Simple Dashboard**: `http://localhost:5000/simple` - Static HTML with interactive maps
+- **Interactive Dashboard**: `http://localhost:5000/interactive` - Real-time Plotly charts  
+- **3D Cesium Dashboard**: `http://localhost:5000/cesium` - Immersive 3D globe
+- **Legacy Map**: `http://localhost:5000/legacy` - Original Folium heatmap
+
+#### Alternative: Individual Dashboard Scripts (Legacy)
+
+```bash
+# Legacy individual scripts (still available)
 cd src
-python main.py
+python main.py              # Original folium map
+python simple_dashboard.py  # HTML dashboard  
+python dashboard.py         # Interactive Dash app
+python run_cesium_dashboard.py  # 3D Cesium dashboard
 ```
-This generates `weighted_distance_heatmap.html` in the project root.
 
-#### Interactive Web Dashboard
-```bash
-cd src
-python dashboard.py
-```
-Opens an interactive dashboard at `http://localhost:8050`
+### 3. Dashboard Types
 
-#### 3D Cesium Dashboard
-```bash
-python run_cesium_dashboard.py
-```
-Launches a 3D interactive globe at `http://localhost:5000`
+#### 📄 Simple HTML Dashboard (Recommended)
+- Comprehensive static HTML report
+- Interactive Leaflet maps
+- Detailed data tables
+- Perfect for sharing and offline viewing
+- No additional dependencies during viewing
 
-#### Simple HTML Dashboard
-```bash
-cd src
-python simple_dashboard.py
-```
-Generates a comprehensive HTML report.
+#### 🚀 Interactive Dashboard (Advanced)
+- Real-time web application
+- Interactive Plotly charts and filtering
+- Live data updates and exploration
+- Advanced analytics and sorting
+
+#### 🌍 3D Globe Visualization (Presentations)
+- Immersive 3D interactive globe using Cesium.js
+- Terrain visualization and spatial analysis
+- Flight controls and cinematic views
+- Best for impressive presentations
+
+#### 🗺️ Legacy Folium Map (Original)
+- Traditional heatmap visualization
+- Geographic markers and overlays
+- Simple and lightweight
+- Original implementation
 
 ### 3. Interpret Results
 

@@ -563,13 +563,39 @@ def load_and_process_routing_data(routing_client: RoutingClient, costing: str = 
     """
     logger.info("Loading and processing routing data")
     
-    # Load data
+    # Load data - check for demo mode first
     prj_path = os.path.join(os.path.dirname(__file__), os.path.pardir)
-    destinations = load_json(os.path.join(prj_path, "destinations.json"))
-    origins = load_json(os.path.join(prj_path, "home_options.json"))
+    
+    if os.getenv("DEMO_MODE", "false").lower() == "true":
+        # Try to load demo data files
+        destinations_file = os.path.join(prj_path, "destinations_demo.json")
+        origins_file = os.path.join(prj_path, "home_options_demo.json")
+        
+        if os.path.exists(destinations_file) and os.path.exists(origins_file):
+            destinations = load_json(destinations_file)
+            origins = load_json(origins_file)
+            logger.info("Loaded demo data files")
+        else:
+            # Fallback to default files
+            destinations = load_json(os.path.join(prj_path, "destinations.json"))
+            origins = load_json(os.path.join(prj_path, "home_options.json"))
+            logger.info("Demo mode enabled but using default data files")
+    else:
+        destinations = load_json(os.path.join(prj_path, "destinations.json"))
+        origins = load_json(os.path.join(prj_path, "home_options.json"))
 
-    # Geocode locations
-    destinations, origins = geocode_locations(routing_client, destinations, origins)
+    # Geocode locations (skip if coords already provided in demo mode)
+    if os.getenv("DEMO_MODE", "false").lower() == "true":
+        # In demo mode, coordinates should already be provided
+        for dest in destinations:
+            if "coords" not in dest:
+                dest["coords"] = routing_client.geocode(dest["name"])
+        for origin in origins:
+            if "coords" not in origin:
+                origin["coords"] = routing_client.geocode(origin["name"])
+        logger.info("Using provided coordinates in demo mode")
+    else:
+        destinations, origins = geocode_locations(routing_client, destinations, origins)
     
     # Calculate routes and scores
     route_data, origin_scores = calculate_routes_and_scores(routing_client, origins, destinations, costing)
@@ -620,6 +646,12 @@ def main(routing_client: RoutingClient):
 
 def setup_routing_client():
     """Setup the routing client and cache."""
+    # Check for demo mode
+    if os.getenv("DEMO_MODE", "false").lower() == "true":
+        from demo import DemoRoutingClient
+        logger.info("Using demo routing client")
+        return DemoRoutingClient()
+    
     USE_GOOGLE = os.getenv("USE_GOOGLE", "false").lower() == "true"
 
     if USE_GOOGLE:
