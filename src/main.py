@@ -223,9 +223,12 @@ class GoogleRoutingClient(RoutingClient):
 
 class MongoCache:
     def __init__(self, mongo_url: str = "mongodb://localhost:27017", db_name: str = "routing_cache", collection_name: str = "cache"):
-        self.client = MongoClient(mongo_url)
+        # Configure client with shorter timeout for faster failure detection
+        self.client = MongoClient(mongo_url, serverSelectionTimeoutMS=3000, connectTimeoutMS=3000)
         self.db = self.client[db_name]
         self.collection = self.db[collection_name]
+        # Test connection and create index
+        self.client.admin.command('ping')  # This will raise an exception if MongoDB is not available
         self.collection.create_index("key", unique=True)
 
     def get(self, key: str) -> Optional[Dict]:
@@ -615,7 +618,7 @@ def main(routing_client: RoutingClient):
     webbrowser.open(map_file)
     logger.info("Heatmap saved and opened in browser")
 
-def setup_routing_client() -> CachedRoutingClient:
+def setup_routing_client():
     """Setup the routing client and cache."""
     USE_GOOGLE = os.getenv("USE_GOOGLE", "false").lower() == "true"
 
@@ -629,10 +632,16 @@ def setup_routing_client() -> CachedRoutingClient:
         NOMINATIM_URL = os.getenv("NOMINATIM_URL", "http://[::1]:9000/nominatim")
         routing_client = ValhallaRoutingClient(VALHALLA_URL, NOMINATIM_URL)
 
-    # Add caching
-    mongo_url = os.getenv("MONGO_URL", "mongodb://localhost:27017")
-    cache = MongoCache(mongo_url)
-    return CachedRoutingClient(routing_client, cache)
+    # Try to add caching, but continue without it if MongoDB is not available
+    try:
+        mongo_url = os.getenv("MONGO_URL", "mongodb://localhost:27017")
+        cache = MongoCache(mongo_url)
+        cached_client = CachedRoutingClient(routing_client, cache)
+        logger.info("MongoDB cache enabled")
+        return cached_client
+    except Exception as e:
+        logger.warning(f"MongoDB cache not available ({e}), continuing without caching")
+        return routing_client
 
 if __name__ == "__main__":
     cached_routing_client = setup_routing_client()
