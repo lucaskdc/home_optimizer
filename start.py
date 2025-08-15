@@ -47,11 +47,11 @@ def main():
         from app import main as app_main
         app_main()
     except ImportError as e:
-        print(f"❌ Failed to import app module: {e}")
+        print(f"Failed to import app module: {e}")
         print("Make sure you're running this script from the project root directory.")
         sys.exit(1)
     except Exception as e:
-        print(f"❌ Error starting the application: {e}")
+        print(f"Error starting the application: {e}")
         sys.exit(1)
 
 if __name__ == '__main__':

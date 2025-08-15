@@ -29,7 +29,7 @@ def launch_dashboard():
         
         # Set environment variables if not set
         if not os.getenv('CESIUM_ACCESS_TOKEN'):
-            print("⚠️  Warning: CESIUM_ACCESS_TOKEN not found in environment variables.")
+            print("Warning: CESIUM_ACCESS_TOKEN not found in environment variables.")
             print("   The dashboard will work with basic terrain, but for better")
             print("   visualizations, get a free token from https://cesium.com/")
             print("   and set it in your .env file: CESIUM_ACCESS_TOKEN=your_token_here")
@@ -44,18 +44,18 @@ def launch_dashboard():
         
         threading.Thread(target=open_browser, daemon=True).start()
         
-        print(f"🌍 Starting Cesium 3D Dashboard...")
-        print(f"📍 URL: http://localhost:{port}")
-        print(f"🎯 Press Ctrl+C to stop the server")
+        print(f"Starting Cesium 3D Dashboard...")
+        print(f"URL: http://localhost:{port}")
+        print(f"Press Ctrl+C to stop the server")
         print()
         
         # Run the Flask app
         app.run(debug=False, host='0.0.0.0', port=port)
         
     except KeyboardInterrupt:
-        print("\n👋 Dashboard stopped.")
+        print("\nDashboard stopped.")
     except Exception as e:
-        print(f"❌ Error starting dashboard: {e}")
+        print(f"Error starting dashboard: {e}")
         print("\nMake sure you have:")
         print("1. MongoDB running (for caching)")
         print("2. destinations.json and home_options.json files")

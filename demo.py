@@ -170,7 +170,7 @@ def run_demo():
     app_main()
 
 if __name__ == '__main__':
-    print("🏠 Home Location Optimizer - Demo Mode")
+    print("Home Location Optimizer - Demo Mode")
     print("This demo works without external routing services")
     print("=" * 50)
     run_demo()

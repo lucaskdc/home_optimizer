@@ -162,7 +162,7 @@ def interactive_dashboard():
     </head>
     <body>
         <div class="container">
-            <h1>🚀 Interactive Dashboard</h1>
+            <h1>Interactive Dashboard</h1>
             <p>The interactive Plotly dashboard runs as a separate service on port 8050.</p>
             <p>Click the button below to launch it in a new window:</p>
             
@@ -275,33 +275,33 @@ def internal_error(error):
 
 def main():
     """Main function to run the unified dashboard service"""
-    print("🏠 Home Location Optimizer - Unified Dashboard Service")
+    print("Home Location Optimizer - Unified Dashboard Service")
     print("=" * 60)
     
     # Initialize services
     print("Initializing dashboard services...")
     if not initialize_services():
-        print("❌ Failed to initialize services. Please check your configuration.")
+        print("Failed to initialize services. Please check your configuration.")
         sys.exit(1)
     
     # Integrate Dash app
     print("Integrating interactive dashboard...")
     if not integrate_dash_app():
-        print("⚠️  Interactive dashboard integration failed. It will not be available.")
+        print("Warning: Interactive dashboard integration failed. It will not be available.")
     
     # Configuration
     host = os.getenv('DASHBOARD_HOST', '127.0.0.1')
     port = int(os.getenv('DASHBOARD_PORT', 5000))
     debug = os.getenv('FLASK_DEBUG', 'false').lower() == 'true'
     
-    print("\n🚀 Starting unified dashboard service...")
-    print(f"📍 URL: http://{host}:{port}")
-    print(f"🌐 Navigation: http://{host}:{port}/")
-    print(f"📄 Simple Dashboard: http://{host}:{port}/simple")
-    print(f"🚀 Interactive Dashboard: http://{host}:{port}/interactive")
-    print(f"🌍 3D Cesium Dashboard: http://{host}:{port}/cesium")
-    print(f"🗺️  Legacy Map: http://{host}:{port}/legacy")
-    print(f"🎯 Press Ctrl+C to stop the server")
+    print("\nStarting unified dashboard service...")
+    print(f"URL: http://{host}:{port}")
+    print(f"Navigation: http://{host}:{port}/")
+    print(f"Simple Dashboard: http://{host}:{port}/simple")
+    print(f"Interactive Dashboard: http://{host}:{port}/interactive")
+    print(f"3D Cesium Dashboard: http://{host}:{port}/cesium")
+    print(f"Legacy Map: http://{host}:{port}/legacy")
+    print(f"Press Ctrl+C to stop the server")
     print("=" * 60)
     
     # Open browser
@@ -328,10 +328,10 @@ def main():
             threaded=True
         )
     except KeyboardInterrupt:
-        print("\n👋 Dashboard service stopped.")
+        print("\nDashboard service stopped.")
     except Exception as e:
         logger.error(f"Failed to start server: {e}")
-        print(f"❌ Failed to start server: {e}")
+        print(f"Failed to start server: {e}")
         sys.exit(1)
 
 if __name__ == '__main__':
