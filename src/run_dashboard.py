@@ -54,21 +54,21 @@ def run_simple_dashboard():
         from simple_dashboard import SimpleHTMLDashboard
         dashboard = SimpleHTMLDashboard()
         dashboard.create_dashboard(costing="auto", output_file="dashboard.html")
-        print("✅ Simple HTML dashboard created successfully!")
+        print("Simple HTML dashboard created successfully!")
     except Exception as e:
-        print(f"❌ Error running simple dashboard: {e}")
+        print(f"Error running simple dashboard: {e}")
 
 def run_interactive_dashboard():
     """Run the interactive Plotly Dash dashboard"""
     try:
         from dashboard import RoutingDashboard
         dashboard = RoutingDashboard()
-        print("🚀 Starting interactive dashboard...")
-        print("📊 Dashboard will be available at: http://127.0.0.1:8050")
-        print("💡 Press Ctrl+C to stop the server")
+        print("Starting interactive dashboard...")
+        print("Dashboard will be available at: http://127.0.0.1:8050")
+        print("Press Ctrl+C to stop the server")
         dashboard.run()
     except Exception as e:
-        print(f"❌ Error running interactive dashboard: {e}")
+        print(f"Error running interactive dashboard: {e}")
 
 def run_original_map():
     """Run the original folium-based map"""
@@ -95,13 +95,13 @@ def run_original_map():
             routing_client = ValhallaRoutingClient(VALHALLA_URL, NOMINATIM_URL)
         
         main(routing_client)
-        print("✅ Original folium map created successfully!")
+        print("Original folium map created successfully!")
     except Exception as e:
-        print(f"❌ Error running original map: {e}")
+        print(f"Error running original map: {e}")
 
 def install_dependencies():
     """Guide user to install dependencies"""
-    print("\n📦 To install additional dependencies, run:")
+    print("\nTo install additional dependencies, run:")
     print("pip install -r requirements.txt")
     print("\nOr install specific packages:")
     print("pip install dash plotly pandas  # For interactive dashboard")
@@ -111,62 +111,62 @@ def main_menu():
     """Display main menu and handle user choice"""
     deps = check_dependencies()
     
-    print("🏠 Home Location Optimizer - Dashboard Launcher")
+    print("Home Location Optimizer - Dashboard Launcher")
     print("=" * 50)
     
-    print("\n📊 Available Options:")
-    print("1. 📄 Simple HTML Dashboard (Recommended)")
-    print("   ✅ Always available - creates a beautiful HTML report")
+    print("\nAvailable Options:")
+    print("1. Simple HTML Dashboard (Recommended)")
+    print("   Always available - creates a beautiful HTML report")
     
     if deps['dash'] and deps['plotly'] and deps['pandas']:
-        print("2. 🚀 Interactive Dashboard (Advanced)")
-        print("   ✅ Available - runs a live web server with interactive charts")
+        print("2. Interactive Dashboard (Advanced)")
+        print("   Available - runs a live web server with interactive charts")
     else:
-        print("2. 🚀 Interactive Dashboard (Advanced)")
-        print("   ❌ Not available - missing dependencies")
+        print("2. Interactive Dashboard (Advanced)")
+        print("   Not available - missing dependencies")
     
     if deps['folium']:
-        print("3. 🗺️  Original Folium Map")
-        print("   ✅ Available - creates the original heatmap")
+        print("3. Original Folium Map")
+        print("   Available - creates the original heatmap")
     else:
-        print("3. 🗺️  Original Folium Map")
-        print("   ❌ Not available - missing folium")
+        print("3. Original Folium Map")
+        print("   Not available - missing folium")
     
-    print("4. 📦 Install Dependencies")
-    print("5. ❌ Exit")
+    print("4. Install Dependencies")
+    print("5. Exit")
     
     print("\n" + "=" * 50)
     choice = input("Select an option (1-5): ").strip()
     
     if choice == "1":
-        print("\n🔄 Creating simple HTML dashboard...")
+        print("\nCreating simple HTML dashboard...")
         run_simple_dashboard()
     
     elif choice == "2":
         if deps['dash'] and deps['plotly'] and deps['pandas']:
-            print("\n🔄 Starting interactive dashboard...")
+            print("\nStarting interactive dashboard...")
             run_interactive_dashboard()
         else:
-            print("\n❌ Interactive dashboard dependencies not installed.")
+            print("\nInteractive dashboard dependencies not installed.")
             print("Please install them first (option 4)")
     
     elif choice == "3":
         if deps['folium']:
-            print("\n🔄 Creating original folium map...")
+            print("\nCreating original folium map...")
             run_original_map()
         else:
-            print("\n❌ Folium not installed.")
+            print("\nFolium not installed.")
             print("Please install it first (option 4)")
     
     elif choice == "4":
         install_dependencies()
     
     elif choice == "5":
-        print("\n👋 Goodbye!")
+        print("\nGoodbye!")
         sys.exit(0)
     
     else:
-        print("\n❌ Invalid choice. Please select 1-5.")
+        print("\nInvalid choice. Please select 1-5.")
     
     # Ask if user wants to continue
     print("\n" + "=" * 50)
@@ -175,14 +175,14 @@ def main_menu():
         print("\n")
         main_menu()
     else:
-        print("\n👋 Goodbye!")
+        print("\nGoodbye!")
 
 
 if __name__ == "__main__":
     try:
         main_menu()
     except KeyboardInterrupt:
-        print("\n\n👋 Dashboard launcher stopped by user.")
+        print("\n\nDashboard launcher stopped by user.")
     except Exception as e:
-        print(f"\n❌ Unexpected error: {e}")
+        print(f"\nUnexpected error: {e}")
         sys.exit(1)

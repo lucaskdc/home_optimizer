@@ -61,14 +61,14 @@ class SimpleHTMLDashboard:
         
         # Generate transportation mode display
         transport_modes = {
-            "auto": "🚗 Car/Auto",
-            "bicycle": "🚲 Bicycle", 
-            "pedestrian": "🚶 Walking",
-            "bus": "🚌 Public Transit",
-            "motor_scooter": "🛵 Motor Scooter",
-            "truck": "🚛 Truck"
+            "auto": "Car/Auto",
+            "bicycle": "Bicycle", 
+            "pedestrian": "Walking",
+            "bus": "Public Transit",
+            "motor_scooter": "Motor Scooter",
+            "truck": "Truck"
         }
-        current_mode = transport_modes.get(costing, f"🚗 {costing}")
+        current_mode = transport_modes.get(costing, f"Car ({costing})")
         
         html_content = f"""
 <!DOCTYPE html>
@@ -267,7 +267,7 @@ class SimpleHTMLDashboard:
 </head>
 <body>
     <div class="container">
-        <h1>🏠 Home Location Optimizer Dashboard</h1>
+        <h1>Home Location Optimizer Dashboard</h1>
         
         <div class="mode-indicator">
             Transportation Mode: {current_mode}
@@ -294,12 +294,12 @@ class SimpleHTMLDashboard:
         
         <div class="content-grid">
             <div class="card">
-                <h3>📍 Interactive Map</h3>
+                <h3>Interactive Map</h3>
                 <div id="map"></div>
             </div>
             
             <div class="card">
-                <h3>🏆 Location Rankings</h3>
+                <h3>Location Rankings</h3>
                 <div class="ranking-list">
 """
         
@@ -322,7 +322,7 @@ class SimpleHTMLDashboard:
         </div>
         
         <div class="card full-width">
-            <h3>📊 Detailed Route Data</h3>
+            <h3>Detailed Route Data</h3>
             <table>
                 <thead>
                     <tr>
@@ -351,8 +351,8 @@ class SimpleHTMLDashboard:
             traffic_impact = route.get('traffic_impact_percent', 0)
             
             transport_mode_display = {
-                "auto": "🚗 Car",
-                "walking": "🚶 Walking"
+                "auto": "Car",
+                "walking": "Walking"
             }.get(route.get('transport_mode', 'auto'), route.get('transport_mode', 'auto'))
             
             group_display = route.get('group', 'individual')
@@ -381,7 +381,7 @@ class SimpleHTMLDashboard:
         </div>
         
         <div class="refresh-note">
-            📝 <strong>Note:</strong> Generated on {datetime.now().strftime('%Y-%m-%d %H:%M:%S')} | 
+            <strong>Note:</strong> Generated on {datetime.now().strftime('%Y-%m-%d %H:%M:%S')} | 
             To update data with different transportation mode, modify the costing parameter in your script and regenerate.
         </div>
     </div>

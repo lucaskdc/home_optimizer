@@ -223,9 +223,12 @@ class GoogleRoutingClient(RoutingClient):
 
 class MongoCache:
     def __init__(self, mongo_url: str = "mongodb://localhost:27017", db_name: str = "routing_cache", collection_name: str = "cache"):
-        self.client = MongoClient(mongo_url)
+        # Configure client with shorter timeout for faster failure detection
+        self.client = MongoClient(mongo_url, serverSelectionTimeoutMS=3000, connectTimeoutMS=3000)
         self.db = self.client[db_name]
         self.collection = self.db[collection_name]
+        # Test connection and create index
+        self.client.admin.command('ping')  # This will raise an exception if MongoDB is not available
         self.collection.create_index("key", unique=True)
 
     def get(self, key: str) -> Optional[Dict]:
@@ -560,13 +563,39 @@ def load_and_process_routing_data(routing_client: RoutingClient, costing: str = 
     """
     logger.info("Loading and processing routing data")
     
-    # Load data
+    # Load data - check for demo mode first
     prj_path = os.path.join(os.path.dirname(__file__), os.path.pardir)
-    destinations = load_json(os.path.join(prj_path, "destinations.json"))
-    origins = load_json(os.path.join(prj_path, "home_options.json"))
+    
+    if os.getenv("DEMO_MODE", "false").lower() == "true":
+        # Try to load demo data files
+        destinations_file = os.path.join(prj_path, "destinations_demo.json")
+        origins_file = os.path.join(prj_path, "home_options_demo.json")
+        
+        if os.path.exists(destinations_file) and os.path.exists(origins_file):
+            destinations = load_json(destinations_file)
+            origins = load_json(origins_file)
+            logger.info("Loaded demo data files")
+        else:
+            # Fallback to default files
+            destinations = load_json(os.path.join(prj_path, "destinations.json"))
+            origins = load_json(os.path.join(prj_path, "home_options.json"))
+            logger.info("Demo mode enabled but using default data files")
+    else:
+        destinations = load_json(os.path.join(prj_path, "destinations.json"))
+        origins = load_json(os.path.join(prj_path, "home_options.json"))
 
-    # Geocode locations
-    destinations, origins = geocode_locations(routing_client, destinations, origins)
+    # Geocode locations (skip if coords already provided in demo mode)
+    if os.getenv("DEMO_MODE", "false").lower() == "true":
+        # In demo mode, coordinates should already be provided
+        for dest in destinations:
+            if "coords" not in dest:
+                dest["coords"] = routing_client.geocode(dest["name"])
+        for origin in origins:
+            if "coords" not in origin:
+                origin["coords"] = routing_client.geocode(origin["name"])
+        logger.info("Using provided coordinates in demo mode")
+    else:
+        destinations, origins = geocode_locations(routing_client, destinations, origins)
     
     # Calculate routes and scores
     route_data, origin_scores = calculate_routes_and_scores(routing_client, origins, destinations, costing)
@@ -615,8 +644,14 @@ def main(routing_client: RoutingClient):
     webbrowser.open(map_file)
     logger.info("Heatmap saved and opened in browser")
 
-def setup_routing_client() -> CachedRoutingClient:
+def setup_routing_client():
     """Setup the routing client and cache."""
+    # Check for demo mode
+    if os.getenv("DEMO_MODE", "false").lower() == "true":
+        from demo import DemoRoutingClient
+        logger.info("Using demo routing client")
+        return DemoRoutingClient()
+    
     USE_GOOGLE = os.getenv("USE_GOOGLE", "false").lower() == "true"
 
     if USE_GOOGLE:
@@ -629,10 +664,16 @@ def setup_routing_client() -> CachedRoutingClient:
         NOMINATIM_URL = os.getenv("NOMINATIM_URL", "http://[::1]:9000/nominatim")
         routing_client = ValhallaRoutingClient(VALHALLA_URL, NOMINATIM_URL)
 
-    # Add caching
-    mongo_url = os.getenv("MONGO_URL", "mongodb://localhost:27017")
-    cache = MongoCache(mongo_url)
-    return CachedRoutingClient(routing_client, cache)
+    # Try to add caching, but continue without it if MongoDB is not available
+    try:
+        mongo_url = os.getenv("MONGO_URL", "mongodb://localhost:27017")
+        cache = MongoCache(mongo_url)
+        cached_client = CachedRoutingClient(routing_client, cache)
+        logger.info("MongoDB cache enabled")
+        return cached_client
+    except Exception as e:
+        logger.warning(f"MongoDB cache not available ({e}), continuing without caching")
+        return routing_client
 
 if __name__ == "__main__":
     cached_routing_client = setup_routing_client()

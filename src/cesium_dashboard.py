@@ -148,8 +148,15 @@ class CesiumDashboard:
             }
         }
 
-# Initialize dashboard
-dashboard = CesiumDashboard()
+# Global dashboard instance (will be initialized when needed)
+dashboard = None
+
+def get_dashboard():
+    """Get or create dashboard instance"""
+    global dashboard
+    if dashboard is None:
+        dashboard = CesiumDashboard()
+    return dashboard
 
 @app.route('/')
 def index():
@@ -161,6 +168,7 @@ def get_data():
     """API endpoint to get routing data"""
     costing = request.args.get('costing', 'auto')
     
+    dashboard = get_dashboard()
     route_data, origin_scores, destinations = dashboard.load_and_process_data(costing)
     
     if not origin_scores:
